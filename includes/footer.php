@@ -2,6 +2,6 @@
 <footer class="footer">
     <div class="footer-content">
         <p>&copy; 2025 Ellens Food House. All rights reserved.</p>
-        <p>123 Main Street, Your City | (123) 456-7890</p>
+
     </div>
 </footer>
