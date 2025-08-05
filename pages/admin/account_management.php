@@ -5,6 +5,12 @@ require_once '../../config/db_model.php';
 $message = '';
 $messageType = '';
 
+// Handle GET parameters for messages (after redirect)
+if (isset($_GET['message']) && isset($_GET['type'])) {
+    $message = urldecode($_GET['message']);
+    $messageType = $_GET['type'];
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['action'])) {
         switch ($_POST['action']) {
@@ -16,11 +22,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 $customerId = addCustomer($firstName, $lastName, $email, $phone);
                 if ($customerId) {
-                    $message = "Customer added successfully! ID: $customerId";
-                    $messageType = 'success';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Customer added successfully!", "success");
                 } else {
-                    $message = "Failed to add customer. Email might already exist.";
-                    $messageType = 'error';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to add customer. Email might already exist.", "error");
                 }
                 break;
                 
@@ -32,22 +36,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $phone = $_POST['phone'];
                 
                 if (updateCustomer($id, $firstName, $lastName, $email, $phone)) {
-                    $message = "Customer updated successfully!";
-                    $messageType = 'success';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Customer updated successfully!", "success");
                 } else {
-                    $message = "Failed to update customer.";
-                    $messageType = 'error';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to update customer.", "error");
                 }
                 break;
                 
             case 'delete_customer':
                 $id = $_POST['customer_id'];
                 if (deleteCustomer($id)) {
-                    $message = "Customer deleted successfully!";
-                    $messageType = 'success';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Customer deleted successfully!", "success");
                 } else {
-                    $message = "Failed to delete customer.";
-                    $messageType = 'error';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete customer.", "error");
                 }
                 break;
                 
@@ -61,11 +61,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 $reservationId = addReservation($customerId, $reservationDate, $reservationTime, $partySize, $tableNumber, $specialRequests);
                 if ($reservationId) {
-                    $message = "Reservation added successfully! ID: $reservationId";
-                    $messageType = 'success';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Reservation added successfully!", "success");
                 } else {
-                    $message = "Failed to add reservation.";
-                    $messageType = 'error';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to add reservation.", "error");
                 }
                 break;
                 
@@ -74,22 +72,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $status = $_POST['status'];
                 
                 if (updateReservationStatus($id, $status)) {
-                    $message = "Reservation status updated successfully!";
-                    $messageType = 'success';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Reservation status updated successfully!", "success");
                 } else {
-                    $message = "Failed to update reservation status.";
-                    $messageType = 'error';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to update reservation status.", "error");
                 }
                 break;
                 
             case 'delete_reservation':
                 $id = $_POST['reservation_id'];
                 if (deleteReservation($id)) {
-                    $message = "Reservation deleted successfully!";
-                    $messageType = 'success';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Reservation deleted successfully!", "success");
                 } else {
-                    $message = "Failed to delete reservation.";
-                    $messageType = 'error';
+                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete reservation.", "error");
                 }
                 break;
         }
@@ -116,38 +110,12 @@ $reservations = getAllReservations();
 </head>
 <body>
     <div class="container-fluid">
-        <!-- Header -->
-        <div class="header">
-            <h1><i class="fas fa-users-cog me-2"></i>MANAGE USERS</h1>
-            <p>Manage customers and reservations for Ellen's Food House</p>
-        </div>
-        
         <?php if ($message): ?>
             <div class="alert alert-<?php echo $messageType == 'success' ? 'success' : 'danger'; ?> alert-dismissible fade show" role="alert">
                 <?php echo htmlspecialchars($message); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         <?php endif; ?>
-        
-        <!-- Statistics Dashboard -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count($customers); ?></div>
-                <div class="stat-label">Total Customers</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count($reservations); ?></div>
-                <div class="stat-label">Total Reservations</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count(array_filter($reservations, function($r) { return $r['status'] == 'pending'; })); ?></div>
-                <div class="stat-label">Pending Reservations</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo count(array_filter($reservations, function($r) { return $r['status'] == 'confirmed'; })); ?></div>
-                <div class="stat-label">Confirmed Reservations</div>
-            </div>
-        </div>
         
         <!-- Navigation Tabs -->
         <ul class="nav nav-tabs" id="managementTabs" role="tablist">
@@ -501,6 +469,17 @@ $reservations = getAllReservations();
             document.getElementById('status_value').value = status;
             document.getElementById('statusUpdateForm').submit();
         }
+        
+        // Auto-dismiss alerts after 5 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function(alert) {
+                setTimeout(function() {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }, 5000); // 5 seconds
+            });
+        });
     </script>
 </body>
 </html>

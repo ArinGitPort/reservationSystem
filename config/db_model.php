@@ -18,7 +18,14 @@ function redirect_to($new_location) {
     exit();
 }
 
-// ===================== CUSTOMER FUNCTIONS =====================
+// Redirect with message function (for better UX)
+function redirect_with_message($location, $message, $type) {
+    $encodedMessage = urlencode($message);
+    $redirectUrl = $location . "?message=" . $encodedMessage . "&type=" . $type;
+    header("Location: " . $redirectUrl);
+    exit();
+}
+
 
 // Add a new customer
 function addCustomer($firstName, $lastName, $email, $phone = null) {
@@ -216,25 +223,20 @@ function getCustomerReservations($customerId) {
     return $reservations;
 }
 
-// ===================== UTILITY FUNCTIONS =====================
 
-// Generic save function (from your original code)
 function save($insertQuery) {
     global $connection;
     $sql = mysqli_query($connection, $insertQuery);
 }
 
-// Display by ID (placeholder for future implementation)
 function display_by_id($id) {
     // Implementation placeholder
 }
 
-// Display by table (placeholder for future implementation)
 function display_by_table($table_map) {
     // Implementation placeholder
 }
 
-// Close database connection
 function closeConnection() {
     global $connection;
     mysqli_close($connection);
