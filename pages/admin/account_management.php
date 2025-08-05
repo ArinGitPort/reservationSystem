@@ -107,29 +107,25 @@ $reservations = getAllReservations();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <!-- Custom CSS -->
     <link rel="stylesheet" href="../../assets/css/account_management.css">
+    <link rel="stylesheet" href="../../assets/css/sidebar.css">
 </head>
 <body>
-    <div class="container-fluid">
+    <!-- Mobile Toggle Button -->
+    <button class="mobile-toggle" onclick="toggleSidebar()">
+        <i class="fas fa-bars"></i>
+    </button>
+    
+    <!-- Sidebar -->
+    <?php include '../../includes/sidebar.php'; ?>
+    
+    <!-- Main Content -->
+    <div class="main-content">
         <?php if ($message): ?>
             <div class="alert alert-<?php echo $messageType == 'success' ? 'success' : 'danger'; ?> alert-dismissible fade show" role="alert">
                 <?php echo htmlspecialchars($message); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         <?php endif; ?>
-        
-        <!-- Navigation Tabs -->
-        <ul class="nav nav-tabs" id="managementTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="customers-tab" data-bs-toggle="tab" data-bs-target="#customers" type="button" role="tab">
-                    <i class="fas fa-users me-2"></i>Customer Management
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="reservations-tab" data-bs-toggle="tab" data-bs-target="#reservations" type="button" role="tab">
-                    <i class="fas fa-calendar-alt me-2"></i>Reservation Management
-                </button>
-            </li>
-        </ul>
         
         <!-- Tab Content -->
         <div class="tab-content" id="managementTabsContent">
@@ -255,6 +251,7 @@ $reservations = getAllReservations();
             </div>
         </div>
     </div>
+    <!-- End Main Content -->
     
     <!-- Add Customer Modal -->
     <div class="modal fade" id="addCustomerModal" tabindex="-1">
@@ -468,6 +465,10 @@ $reservations = getAllReservations();
             document.getElementById('status_reservation_id').value = reservationId;
             document.getElementById('status_value').value = status;
             document.getElementById('statusUpdateForm').submit();
+        }
+        
+        function toggleSidebar() {
+            document.querySelector('.sidebar').classList.toggle('show');
         }
         
         // Auto-dismiss alerts after 5 seconds

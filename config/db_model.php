@@ -12,6 +12,11 @@ $connection = mysqli_connect(DB_SERVER, DB_USER, DB_PASS, DB_NAME);
     );
 }
 
+// Include helper functions
+require_once 'db_helpers.php';xecuteInsert($sql, "ssss", $firstName, $lastName, $email, $phone);
+}
+
+
 // Redirect function
 function redirect_to($new_location) {
     header("Location: ".$new_location);
@@ -29,198 +34,58 @@ function redirect_with_message($location, $message, $type) {
 
 // Add a new customer
 function addCustomer($firstName, $lastName, $email, $phone = null) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, 
-        "INSERT INTO customers (first_name, last_name, email, phone) VALUES (?, ?, ?, ?)");
-    
-    mysqli_stmt_bind_param($stmt, "ssss", $firstName, $lastName, $email, $phone);
-    
-    if (mysqli_stmt_execute($stmt)) {
-        $customerId = mysqli_insert_id($connection);
-        mysqli_stmt_close($stmt);
-        return $customerId;
-    } else {
-        mysqli_stmt_close($stmt);
-        return false;
-    }
-}
-
+    $sql = "INSERT INTO customers (first_name, last_name, email, phone) VALUES (?, ?, ?, ?)";
+    return e
 // Get customer by ID
 function getCustomerById($id) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, "SELECT * FROM customers WHERE id = ?");
-    mysqli_stmt_bind_param($stmt, "i", $id);
-    mysqli_stmt_execute($stmt);
-    
-    $result = mysqli_stmt_get_result($stmt);
-    $customer = mysqli_fetch_assoc($result);
-    mysqli_stmt_close($stmt);
-    
-    return $customer;
+    $sql = "SELECT * FROM customers WHERE id = ?";
+    return executeSelectOne($sql, "i", $id);
 }
 
 // Get all customers
 function getAllCustomers() {
-    global $connection;
-    $query = "SELECT * FROM customers ORDER BY created_at DESC";
-    $result = mysqli_query($connection, $query);
-    
-    $customers = [];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $customers[] = $row;
-    }
-    
-    return $customers;
+    $sql = "SELECT * FROM customers ORDER BY created_at DESC";
+    return executeSelectAll($sql);
 }
 
 // Update customer
 function updateCustomer($id, $firstName, $lastName, $email, $phone = null) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, 
-        "UPDATE customers SET first_name = ?, last_name = ?, email = ?, phone = ? WHERE id = ?");
-    
-    mysqli_stmt_bind_param($stmt, "ssssi", $firstName, $lastName, $email, $phone, $id);
-    
-    $result = mysqli_stmt_execute($stmt);
-    mysqli_stmt_close($stmt);
-    
-    return $result;
+    $sql = "UPDATE customers SET first_name = ?, last_name = ?, email = ?, phone = ? WHERE id = ?";
+    return executeUpdate($sql, "ssssi", $firstName, $lastName, $email, $phone, $id);
 }
 
 // Delete customer
 function deleteCustomer($id) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, "DELETE FROM customers WHERE id = ?");
-    mysqli_stmt_bind_param($stmt, "i", $id);
-    
-    $result = mysqli_stmt_execute($stmt);
-    mysqli_stmt_close($stmt);
-    
-    return $result;
+    return executeDelete("customers", $id);
 }
 
-// ===================== RESERVATION FUNCTIONS =====================
 
 // Add a new reservation
 function addReservation($customerId, $reservationDate, $reservationTime, $partySize, $tableNumber = null, $specialRequests = null) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, 
-        "INSERT INTO reservations (customer_id, reservation_date, reservation_time, party_size, table_number, special_requests) 
-         VALUES (?, ?, ?, ?, ?, ?)");
-    
-    mysqli_stmt_bind_param($stmt, "isssis", $customerId, $reservationDate, $reservationTime, $partySize, $tableNumber, $specialRequests);
-    
-    if (mysqli_stmt_execute($stmt)) {
-        $reservationId = mysqli_insert_id($connection);
-        mysqli_stmt_close($stmt);
-        return $reservationId;
-    } else {
-        mysqli_stmt_close($stmt);
-        return false;
-    }
+    $sql = "INSERT INTO reservations (customer_id, reservation_date, reservation_time, party_size, table_number, special_requests) VALUES (?, ?, ?, ?, ?, ?)";
+    return executeInsert($sql, "isssis", $customerId, $reservationDate, $reservationTime, $partySize, $tableNumber, $specialRequests);
 }
 
-// Get reservation by ID with customer details
-function getReservationById($id) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, 
-        "SELECT r.*, c.first_name, c.last_name, c.email, c.phone 
-         FROM reservations r 
-         JOIN customers c ON r.customer_id = c.id 
-         WHERE r.id = ?");
-    
-    mysqli_stmt_bind_param($stmt, "i", $id);
-    mysqli_stmt_execute($stmt);
-    
-    $result = mysqli_stmt_get_result($stmt);
-    $reservation = mysqli_fetch_assoc($result);
-    mysqli_stmt_close($stmt);
-    
-    return $reservation;
-}
+
 
 // Get all reservations with customer details
 function getAllReservations() {
-    global $connection;
-    $query = "SELECT r.*, c.first_name, c.last_name, c.email 
-              FROM reservations r 
-              JOIN customers c ON r.customer_id = c.id 
-              ORDER BY r.reservation_date DESC, r.reservation_time DESC";
-    
-    $result = mysqli_query($connection, $query);
-    
-    $reservations = [];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $reservations[] = $row;
-    }
-    
-    return $reservations;
+    $sql = "SELECT r.*, c.first_name, c.last_name, c.email 
+            FROM reservations r 
+            JOIN customers c ON r.customer_id = c.id 
+            ORDER BY r.reservation_date DESC, r.reservation_time DESC";
+    return executeSelectAll($sql);
 }
 
 // Update reservation status
 function updateReservationStatus($id, $status) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, "UPDATE reservations SET status = ? WHERE id = ?");
-    mysqli_stmt_bind_param($stmt, "si", $status, $id);
-    
-    $result = mysqli_stmt_execute($stmt);
-    mysqli_stmt_close($stmt);
-    
-    return $result;
-}
-
-// Get reservations by date
-function getReservationsByDate($date) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, 
-        "SELECT r.*, c.first_name, c.last_name, c.email 
-         FROM reservations r 
-         JOIN customers c ON r.customer_id = c.id 
-         WHERE r.reservation_date = ? 
-         ORDER BY r.reservation_time");
-    
-    mysqli_stmt_bind_param($stmt, "s", $date);
-    mysqli_stmt_execute($stmt);
-    
-    $result = mysqli_stmt_get_result($stmt);
-    $reservations = [];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $reservations[] = $row;
-    }
-    mysqli_stmt_close($stmt);
-    
-    return $reservations;
+    $sql = "UPDATE reservations SET status = ? WHERE id = ?";
+    return executeUpdate($sql, "si", $status, $id);
 }
 
 // Delete reservation
 function deleteReservation($id) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, "DELETE FROM reservations WHERE id = ?");
-    mysqli_stmt_bind_param($stmt, "i", $id);
-    
-    $result = mysqli_stmt_execute($stmt);
-    mysqli_stmt_close($stmt);
-    
-    return $result;
-}
-
-// Get all reservations for a specific customer
-function getCustomerReservations($customerId) {
-    global $connection;
-    $stmt = mysqli_prepare($connection, 
-        "SELECT * FROM reservations WHERE customer_id = ? ORDER BY reservation_date DESC");
-    
-    mysqli_stmt_bind_param($stmt, "i", $customerId);
-    mysqli_stmt_execute($stmt);
-    
-    $result = mysqli_stmt_get_result($stmt);
-    $reservations = [];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $reservations[] = $row;
-    }
-    mysqli_stmt_close($stmt);
-    
-    return $reservations;
+    return executeDelete("reservations", $id);
 }
 
 
@@ -229,13 +94,6 @@ function save($insertQuery) {
     $sql = mysqli_query($connection, $insertQuery);
 }
 
-function display_by_id($id) {
-    // Implementation placeholder
-}
-
-function display_by_table($table_map) {
-    // Implementation placeholder
-}
 
 function closeConnection() {
     global $connection;
