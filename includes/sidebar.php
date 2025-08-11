@@ -21,9 +21,9 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="banner_management.php" id="banners-link">
-                        <i class="fas fa-images me-2"></i>
-                        <span>Banner Management</span>
+                    <a class="nav-link" href="event_display_management.php" id="events-link">
+                        <i class="fas fa-calendar-alt me-2"></i>
+                        <span>Event Display Management</span>
                     </a>
                 </li>
                 <li class="nav-item">
@@ -97,8 +97,8 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('customers-link').classList.add('active');
     } else if (currentPage.includes('reservation_management.php')) {
         document.getElementById('reservations-link').classList.add('active');
-    } else if (currentPage.includes('banner_management.php')) {
-        document.getElementById('banners-link').classList.add('active');
+    } else if (currentPage.includes('event_display_management.php')) {
+        document.getElementById('events-link').classList.add('active');
     } else if (currentPage.includes('menu_management.php')) {
         document.getElementById('menu-link').classList.add('active');
     }

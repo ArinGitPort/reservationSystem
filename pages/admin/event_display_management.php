@@ -13,7 +13,7 @@ if (isset($_GET['message']) && isset($_GET['type'])) {
     
     // Clear the URL parameters to prevent message showing on refresh
     echo "<script>
-        if (window.history.replaceState) {
+        if (window.history.replaceState) {Q
             window.history.replaceState(null, null, window.location.pathname);
         }
     </script>";
@@ -24,6 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         switch ($_POST['action']) {
             case 'upload_banner':
                 $title = $_POST['title'];
+                $event_date = $_POST['event_date'];
                 $active = isset($_POST['active']) ? 1 : 0;
                 
                 // Handle file upload
@@ -32,13 +33,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     if ($uploadResult['success']) {
                         // Save to database using basic mysqli
-                        $stmt = $conn->prepare("INSERT INTO banners (filename, title, active) VALUES (?, ?, ?)");
-                        $stmt->bind_param("ssi", $uploadResult['filename'], $title, $active);
+                        $stmt = $conn->prepare("INSERT INTO banners (filename, title, event_date, active) VALUES (?, ?, ?, ?)");
+                        $stmt->bind_param("sssi", $uploadResult['filename'], $title, $event_date, $active);
                         
                         if ($stmt->execute()) {
-                            redirect_with_message($_SERVER['PHP_SELF'], "Banner uploaded successfully!", "success");
+                            redirect_with_message($_SERVER['PHP_SELF'], "Event banner uploaded successfully!", "success");
                         } else {
-                            redirect_with_message($_SERVER['PHP_SELF'], "Failed to save banner to database.", "error");
+                            redirect_with_message($_SERVER['PHP_SELF'], "Failed to save event banner to database.", "error");
                         }
                         $stmt->close();
                     } else {
@@ -140,7 +141,7 @@ while ($row = $result->fetch_assoc()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Banner Management - Ellen's Food House</title>
+    <title>Event Display Management - Ellen's Food House</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome for icons -->
@@ -167,11 +168,11 @@ while ($row = $result->fetch_assoc()) {
             </div>
         <?php endif; ?>
         
-        <!-- Banner Management -->
+        <!-- Event Display Management -->
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h3><i class="fas fa-images me-2"></i>Banner Management</h3>
+            <h3><i class="fas fa-calendar-alt me-2"></i>Event Display Management</h3>
             <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#uploadBannerModal">
-                <i class="fas fa-upload me-2"></i>Upload Banner
+                <i class="fas fa-upload me-2"></i>Upload Event Banner
             </button>
         </div>
         
@@ -180,8 +181,8 @@ while ($row = $result->fetch_assoc()) {
                 <tr>
                     <th>#</th>
                     <th>PREVIEW</th>
-                    <th>TITLE</th>
-                    <th>FILENAME</th>
+                    <th>EVENT TITLE</th>
+                    <th>EVENT DATE</th>
                     <th>STATUS</th>
                     <th>UPLOADED</th>
                     <th>MANAGE</th>
@@ -199,7 +200,13 @@ while ($row = $result->fetch_assoc()) {
                     <td>
                         <div class="fw-bold"><?php echo htmlspecialchars($banner['title']); ?></div>
                     </td>
-                    <td><?php echo htmlspecialchars($banner['filename']); ?></td>
+                    <td>
+                        <?php if (isset($banner['event_date']) && $banner['event_date']): ?>
+                            <div class="fw-bold text-primary"><?php echo date('M d, Y', strtotime($banner['event_date'])); ?></div>
+                        <?php else: ?>
+                            <span class="text-muted">Not set</span>
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <span class="badge bg-<?php echo $banner['active'] ? 'success' : 'secondary'; ?>">
                             <?php echo $banner['active'] ? 'Active' : 'Inactive'; ?>
@@ -238,20 +245,24 @@ while ($row = $result->fetch_assoc()) {
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-upload me-2"></i>Upload Banner</h5>
+                    <h5 class="modal-title"><i class="fas fa-upload me-2"></i>Upload Event Banner</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <form method="POST" enctype="multipart/form-data">
                     <div class="modal-body">
                         <input type="hidden" name="action" value="upload_banner">
                         <div class="mb-3">
-                            <label for="title" class="form-label">Banner Title</label>
-                            <input type="text" class="form-control" name="title" required>
+                            <label for="title" class="form-label">Event Title</label>
+                            <input type="text" class="form-control" name="title" placeholder="e.g., Christmas Special Menu" required>
                         </div>
                         <div class="mb-3">
-                            <label for="banner_image" class="form-label">Banner Image</label>
+                            <label for="event_date" class="form-label">Event Date</label>
+                            <input type="date" class="form-control" name="event_date" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="banner_image" class="form-label">Event Banner Image</label>
                             <input type="file" class="form-control" name="banner_image" accept=".jpg,.jpeg,.png" required>
-                            <div class="form-text">Accepted formats: JPG, PNG. Max size: 2MB</div>
+                            <div class="form-text">Accepted formats: JPG, PNG. Max size: 2MB. Recommended size: 1200x400px</div>
                         </div>
                         <div class="mb-3 form-check">
                             <input type="checkbox" class="form-check-input" name="active" value="1" checked>
@@ -260,7 +271,7 @@ while ($row = $result->fetch_assoc()) {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-dark">Upload Banner</button>
+                        <button type="submit" class="btn btn-dark">Upload Event Banner</button>
                     </div>
                 </form>
             </div>

@@ -8,15 +8,6 @@ $menuItems = [];
 while ($row = $result->fetch_assoc()) {
     $menuItems[] = $row;
 }
-
-// Separate best sellers from regular items
-$bestSellers = array_filter($menuItems, function($item) {
-    return $item['is_best_seller'] == 1;
-});
-
-$regularItems = array_filter($menuItems, function($item) {
-    return $item['is_best_seller'] == 0;
-});
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -28,60 +19,27 @@ $regularItems = array_filter($menuItems, function($item) {
 </head>
 <body>
 
-<!-- Hero Section -->
-<div class="menu-hero">
-    <div class="hero-content">
-        <h1>Our Menu</h1>
-        <p>Discover our carefully crafted dishes made with the finest ingredients</p>
-    </div>
-</div>
-
 <!-- Main Menu Content -->
 <main class="main-content">
-    <?php if (!empty($bestSellers)): ?>
+    <?php if (!empty($menuItems)): ?>
     <section class="menu-section">
         <div class="container">
-            <h2 class="section-title">
-                <span class="star-icon">⭐</span>
-                Best Sellers
-            </h2>
+            <h2 class="section-title">Our Menu</h2>
             <div class="menu-grid">
-                <?php foreach ($bestSellers as $item): ?>
-                    <div class="menu-item featured">
+                <?php foreach ($menuItems as $item): ?>
+                    <div class="menu-item <?php echo $item['is_best_seller'] ? 'featured' : ''; ?>">
                         <?php if ($item['image_path']): ?>
                             <div class="item-image">
                                 <img src="../uploads/menu/<?php echo htmlspecialchars($item['image_path']); ?>" 
                                      alt="<?php echo htmlspecialchars($item['name']); ?>">
-                                <div class="bestseller-badge">Best Seller</div>
+                                <?php if ($item['is_best_seller']): ?>
+                                    <div class="bestseller-badge">Best Seller</div>
+                                <?php endif; ?>
                             </div>
                         <?php endif; ?>
                         <div class="item-content">
                             <h3 class="item-name"><?php echo htmlspecialchars($item['name']); ?></h3>
-                            <p class="item-price">$<?php echo number_format($item['price'], 2); ?></p>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    </section>
-    <?php endif; ?>
-
-    <?php if (!empty($regularItems)): ?>
-    <section class="menu-section">
-        <div class="container">
-            <h2 class="section-title">All Menu Items</h2>
-            <div class="menu-grid">
-                <?php foreach ($regularItems as $item): ?>
-                    <div class="menu-item">
-                        <?php if ($item['image_path']): ?>
-                            <div class="item-image">
-                                <img src="../uploads/menu/<?php echo htmlspecialchars($item['image_path']); ?>" 
-                                     alt="<?php echo htmlspecialchars($item['name']); ?>">
-                            </div>
-                        <?php endif; ?>
-                        <div class="item-content">
-                            <h3 class="item-name"><?php echo htmlspecialchars($item['name']); ?></h3>
-                            <p class="item-price">$<?php echo number_format($item['price'], 2); ?></p>
+                            <p class="item-price">₱<?php echo number_format($item['price'], 2); ?></p>
                         </div>
                     </div>
                 <?php endforeach; ?>
