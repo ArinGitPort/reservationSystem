@@ -22,34 +22,41 @@ if (isset($_GET['message']) && isset($_GET['type'])) {
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['action'])) {
         switch ($_POST['action']) {
+
             case 'add_menu_item':
                 $name = $_POST['name'];
                 $price = $_POST['price'];
                 $isBestSeller = isset($_POST['is_best_seller']) ? 1 : 0;
-                
-                // Handle file upload
                 $imagePath = '';
-                if (isset($_FILES['menu_image']) && $_FILES['menu_image']['error'] == 0) {
-                    $uploadResult = uploadMenuImage($_FILES['menu_image']);
-                    
-                    if ($uploadResult['success']) {
-                        $imagePath = $uploadResult['filename'];
-                    } else {
-                        redirect_with_message($_SERVER['PHP_SELF'], $uploadResult['message'], "error");
-                        break;
-                    }
-                }
-                
-                // Save to database using basic mysqli
-                $stmt = $conn->prepare("INSERT INTO menu (name, price, image_path, is_best_seller) VALUES (?, ?, ?, ?)");
-                $stmt->bind_param("sdsi", $name, $price, $imagePath, $isBestSeller);
-                
+
+                // Insert first to get the ID
+                $stmt = $conn->prepare("INSERT INTO menu (name, price, image_path, is_best_seller) VALUES (?, ?, '', ?)");
+                $stmt->bind_param("sdi", $name, $price, $isBestSeller);
                 if ($stmt->execute()) {
+                    $menuId = $stmt->insert_id;
+                    $stmt->close();
+
+                    // Handle file upload and rename to menu_id.ext
+                    if (isset($_FILES['menu_image']) && $_FILES['menu_image']['error'] == 0) {
+                        $uploadResult = uploadMenuImageWithId($_FILES['menu_image'], $menuId);
+                        if ($uploadResult['success']) {
+                            $imagePath = $uploadResult['filename'];
+                            // Update menu row with image filename
+                            $stmt2 = $conn->prepare("UPDATE menu SET image_path = ? WHERE menu_id = ?");
+                            $stmt2->bind_param("si", $imagePath, $menuId);
+                            $stmt2->execute();
+                            $stmt2->close();
+                        } else {
+                            // Optionally delete the menu row if image upload fails
+                            $conn->query("DELETE FROM menu WHERE menu_id = $menuId");
+                            redirect_with_message($_SERVER['PHP_SELF'], $uploadResult['message'], "error");
+                            break;
+                        }
+                    }
                     redirect_with_message($_SERVER['PHP_SELF'], "Menu item added successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to save menu item to database.", "error");
                 }
-                $stmt->close();
                 break;
                 
             case 'edit_menu_item':
@@ -57,27 +64,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $name = $_POST['name'];
                 $price = $_POST['price'];
                 $isBestSeller = isset($_POST['is_best_seller']) ? 1 : 0;
-                
+
                 // Handle file upload if new image provided
                 if (isset($_FILES['menu_image']) && $_FILES['menu_image']['error'] == 0) {
-                    $uploadResult = uploadMenuImage($_FILES['menu_image']);
-                    
+                    $uploadResult = uploadMenuImageWithId($_FILES['menu_image'], $menuId);
                     if ($uploadResult['success']) {
-                        // Get old image path to delete it
+                        // Get old image path to delete it (if extension changed)
                         $stmt = $conn->prepare("SELECT image_path FROM menu WHERE menu_id = ?");
                         $stmt->bind_param("i", $menuId);
                         $stmt->execute();
                         $result = $stmt->get_result();
                         $oldItem = $result->fetch_assoc();
                         $stmt->close();
-                        
-                        if ($oldItem && $oldItem['image_path']) {
+                        if ($oldItem && $oldItem['image_path'] && $oldItem['image_path'] !== $uploadResult['filename']) {
                             $oldImagePath = "../../uploads/menu/" . $oldItem['image_path'];
                             if (file_exists($oldImagePath)) {
                                 unlink($oldImagePath);
                             }
                         }
-                        
                         // Update with new image
                         $stmt = $conn->prepare("UPDATE menu SET name = ?, price = ?, image_path = ?, is_best_seller = ? WHERE menu_id = ?");
                         $stmt->bind_param("sdsii", $name, $price, $uploadResult['filename'], $isBestSeller, $menuId);
@@ -90,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $stmt = $conn->prepare("UPDATE menu SET name = ?, price = ?, is_best_seller = ? WHERE menu_id = ?");
                     $stmt->bind_param("sdii", $name, $price, $isBestSeller, $menuId);
                 }
-                
+
                 if ($stmt->execute()) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Menu item updated successfully!", "success");
                 } else {
@@ -101,12 +105,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
             case 'delete_menu_item':
                 $menuId = $_POST['menu_id'];
-                $imagePath = $_POST['image_path'];
-                
+                // Get image filename from DB
+                $stmt = $conn->prepare("SELECT image_path FROM menu WHERE menu_id = ?");
+                $stmt->bind_param("i", $menuId);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $row = $result->fetch_assoc();
+                $stmt->close();
+                $imagePath = $row ? $row['image_path'] : '';
+
                 // Delete from database
                 $stmt = $conn->prepare("DELETE FROM menu WHERE menu_id = ?");
                 $stmt->bind_param("i", $menuId);
-                
                 if ($stmt->execute()) {
                     // Delete image file if exists
                     if ($imagePath) {
@@ -125,35 +135,41 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
+
 /**
- * Upload menu image with validation
+ * Upload menu image and rename to menu_id.ext
  */
-function uploadMenuImage($file) {
+function uploadMenuImageWithId($file, $menuId) {
     $uploadDir = "../../uploads/menu/";
     $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
     $maxSize = 2 * 1024 * 1024; // 2MB
-    
+
     // Validate file type
     $fileType = $file['type'];
     if (!in_array($fileType, $allowedTypes)) {
         return ['success' => false, 'message' => 'Only JPG and PNG files are allowed.'];
     }
-    
+
     // Validate file size
     if ($file['size'] > $maxSize) {
         return ['success' => false, 'message' => 'File size must be less than 2MB.'];
     }
-    
-    // Generate unique filename
-    $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-    $filename = 'menu_' . time() . '_' . rand(1000, 9999) . '.' . $extension;
+
+    // Use menu_id as filename
+    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $filename = $menuId . '.' . $extension;
     $targetPath = $uploadDir . $filename;
-    
+
     // Create directory if it doesn't exist
     if (!is_dir($uploadDir)) {
         mkdir($uploadDir, 0755, true);
     }
-    
+
+    // Remove any existing file with same name (for updates)
+    if (file_exists($targetPath)) {
+        unlink($targetPath);
+    }
+
     // Move uploaded file
     if (move_uploaded_file($file['tmp_name'], $targetPath)) {
         return ['success' => true, 'filename' => $filename];
