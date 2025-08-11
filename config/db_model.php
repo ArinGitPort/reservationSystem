@@ -12,10 +12,74 @@ $connection = mysqli_connect(DB_SERVER, DB_USER, DB_PASS, DB_NAME);
     );
 }
 
-// Include helper functions
-require_once 'db_helpers.php';xecuteInsert($sql, "ssss", $firstName, $lastName, $email, $phone);
+// ===================== HELPER FUNCTIONS =====================
+
+// Generic save function (INSERT with auto-increment ID return)
+function save($sql) {
+    global $connection;
+    $result = mysqli_query($connection, $sql);
+    
+    if ($result) {
+        return mysqli_insert_id($connection);
+    } else {
+        return false;
+    }
 }
 
+// Generic update function
+function update($sql) {
+    global $connection;
+    return mysqli_query($connection, $sql);
+}
+
+// Generic delete function
+function delete($table, $id) {
+    global $connection;
+    $sql = "DELETE FROM {$table} WHERE id = ?";
+    $stmt = mysqli_prepare($connection, $sql);
+    
+    if (!$stmt) {
+        return false;
+    }
+    
+    mysqli_stmt_bind_param($stmt, "i", $id);
+    $result = mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+    
+    return $result;
+}
+
+// Generic select single record function
+function selectOne($sql, $types = null, ...$params) {
+    global $connection;
+    
+    if ($types) {
+        $stmt = mysqli_prepare($connection, $sql);
+        if (!$stmt) {
+            return false;
+        }
+        mysqli_stmt_bind_param($stmt, $types, ...$params);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        $data = mysqli_fetch_assoc($result);
+        mysqli_stmt_close($stmt);
+        return $data;
+    } else {
+        $result = mysqli_query($connection, $sql);
+        return mysqli_fetch_assoc($result);
+    }
+}
+
+// Generic select multiple records function
+function selectAll($sql) {
+    global $connection;
+    $result = mysqli_query($connection, $sql);
+    $data = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $data[] = $row;
+    }
+    return $data;
+}
 
 // Redirect function
 function redirect_to($new_location) {
@@ -31,69 +95,7 @@ function redirect_with_message($location, $message, $type) {
     exit();
 }
 
-
-// Add a new customer
-function addCustomer($firstName, $lastName, $email, $phone = null) {
-    $sql = "INSERT INTO customers (first_name, last_name, email, phone) VALUES (?, ?, ?, ?)";
-    return e
-// Get customer by ID
-function getCustomerById($id) {
-    $sql = "SELECT * FROM customers WHERE id = ?";
-    return executeSelectOne($sql, "i", $id);
-}
-
-// Get all customers
-function getAllCustomers() {
-    $sql = "SELECT * FROM customers ORDER BY created_at DESC";
-    return executeSelectAll($sql);
-}
-
-// Update customer
-function updateCustomer($id, $firstName, $lastName, $email, $phone = null) {
-    $sql = "UPDATE customers SET first_name = ?, last_name = ?, email = ?, phone = ? WHERE id = ?";
-    return executeUpdate($sql, "ssssi", $firstName, $lastName, $email, $phone, $id);
-}
-
-// Delete customer
-function deleteCustomer($id) {
-    return executeDelete("customers", $id);
-}
-
-
-// Add a new reservation
-function addReservation($customerId, $reservationDate, $reservationTime, $partySize, $tableNumber = null, $specialRequests = null) {
-    $sql = "INSERT INTO reservations (customer_id, reservation_date, reservation_time, party_size, table_number, special_requests) VALUES (?, ?, ?, ?, ?, ?)";
-    return executeInsert($sql, "isssis", $customerId, $reservationDate, $reservationTime, $partySize, $tableNumber, $specialRequests);
-}
-
-
-
-// Get all reservations with customer details
-function getAllReservations() {
-    $sql = "SELECT r.*, c.first_name, c.last_name, c.email 
-            FROM reservations r 
-            JOIN customers c ON r.customer_id = c.id 
-            ORDER BY r.reservation_date DESC, r.reservation_time DESC";
-    return executeSelectAll($sql);
-}
-
-// Update reservation status
-function updateReservationStatus($id, $status) {
-    $sql = "UPDATE reservations SET status = ? WHERE id = ?";
-    return executeUpdate($sql, "si", $status, $id);
-}
-
-// Delete reservation
-function deleteReservation($id) {
-    return executeDelete("reservations", $id);
-}
-
-
-function save($insertQuery) {
-    global $connection;
-    $sql = mysqli_query($connection, $insertQuery);
-}
-
+// ===================== UTILITY FUNCTIONS =====================
 
 function closeConnection() {
     global $connection;
