@@ -24,8 +24,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         switch ($_POST['action']) {
             case 'upload_banner':
                 $title = $_POST['title'];
-                $event_date = $_POST['event_date'];
+                $description = $_POST['description'];
+                $event_start_date = $_POST['event_start_date'];
+                $event_end_date = $_POST['event_end_date'];
                 $active = isset($_POST['active']) ? 1 : 0;
+                
+                // Validate dates
+                if ($event_end_date < $event_start_date) {
+                    redirect_with_message($_SERVER['PHP_SELF'], "End date cannot be earlier than start date.", "error");
+                    break;
+                }
                 
                 // Handle file upload
                 if (isset($_FILES['banner_image']) && $_FILES['banner_image']['error'] == 0) {
@@ -33,8 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     if ($uploadResult['success']) {
                         // Save to database using basic mysqli
-                        $stmt = $conn->prepare("INSERT INTO banners (filename, title, event_date, active) VALUES (?, ?, ?, ?)");
-                        $stmt->bind_param("sssi", $uploadResult['filename'], $title, $event_date, $active);
+                        $stmt = $conn->prepare("INSERT INTO banners (filename, title, description, event_start_date, event_end_date, active) VALUES (?, ?, ?, ?, ?, ?)");
+                        $stmt->bind_param("sssssi", $uploadResult['filename'], $title, $description, $event_start_date, $event_end_date, $active);
                         
                         if ($stmt->execute()) {
                             redirect_with_message($_SERVER['PHP_SELF'], "Event banner uploaded successfully!", "success");
@@ -128,8 +136,21 @@ function uploadBannerImage($file) {
     }
 }
 
-// Get all banners for display
-$result = $conn->query("SELECT * FROM banners ORDER BY date_uploaded DESC");
+// Get all banners for display and auto-deactivate expired events
+$today = date('Y-m-d');
+
+// First, automatically deactivate expired events
+$conn->query("UPDATE banners SET active = 0 WHERE event_end_date < '$today' AND active = 1");
+
+// Then get all banners for display
+$result = $conn->query("SELECT *, 
+    CASE 
+        WHEN event_end_date < '$today' THEN 'expired'
+        WHEN event_start_date <= '$today' AND event_end_date >= '$today' THEN 'active'
+        WHEN event_start_date > '$today' THEN 'upcoming'
+        ELSE 'unknown'
+    END as event_status
+    FROM banners ORDER BY date_uploaded DESC");
 $banners = [];
 while ($row = $result->fetch_assoc()) {
     $banners[] = $row;
@@ -181,8 +202,8 @@ while ($row = $result->fetch_assoc()) {
                 <tr>
                     <th>#</th>
                     <th>PREVIEW</th>
-                    <th>EVENT TITLE</th>
-                    <th>EVENT DATE</th>
+                    <th>EVENT DETAILS</th>
+                    <th>EVENT PERIOD</th>
                     <th>STATUS</th>
                     <th>UPLOADED</th>
                     <th>MANAGE</th>
@@ -198,19 +219,56 @@ while ($row = $result->fetch_assoc()) {
                              style="width: 80px; height: 50px; object-fit: cover; border-radius: 4px;">
                     </td>
                     <td>
-                        <div class="fw-bold"><?php echo htmlspecialchars($banner['title']); ?></div>
+                        <div class="fw-bold mb-1"><?php echo htmlspecialchars($banner['title']); ?></div>
+                        <?php if (isset($banner['description']) && $banner['description']): ?>
+                            <small class="text-muted"><?php echo htmlspecialchars(substr($banner['description'], 0, 80)); ?><?php echo strlen($banner['description']) > 80 ? '...' : ''; ?></small>
+                        <?php else: ?>
+                            <small class="text-muted">No description</small>
+                        <?php endif; ?>
                     </td>
                     <td>
-                        <?php if (isset($banner['event_date']) && $banner['event_date']): ?>
+                        <?php if (isset($banner['event_start_date']) && $banner['event_start_date']): ?>
+                            <div class="fw-bold text-primary"><?php echo date('M d, Y', strtotime($banner['event_start_date'])); ?></div>
+                            <small class="text-muted">to</small>
+                            <div class="fw-bold text-primary"><?php echo date('M d, Y', strtotime($banner['event_end_date'])); ?></div>
+                        <?php elseif (isset($banner['event_date']) && $banner['event_date']): ?>
                             <div class="fw-bold text-primary"><?php echo date('M d, Y', strtotime($banner['event_date'])); ?></div>
                         <?php else: ?>
                             <span class="text-muted">Not set</span>
                         <?php endif; ?>
                     </td>
                     <td>
-                        <span class="badge bg-<?php echo $banner['active'] ? 'success' : 'secondary'; ?>">
-                            <?php echo $banner['active'] ? 'Active' : 'Inactive'; ?>
-                        </span>
+                        <div class="d-flex flex-column gap-1">
+                            <span class="badge bg-<?php echo $banner['active'] ? 'success' : 'secondary'; ?>">
+                                <?php echo $banner['active'] ? 'Active' : 'Inactive'; ?>
+                            </span>
+                            <?php if (isset($banner['event_status'])): ?>
+                                <?php 
+                                $statusClass = '';
+                                $statusText = '';
+                                switch($banner['event_status']) {
+                                    case 'expired':
+                                        $statusClass = 'bg-danger';
+                                        $statusText = 'Expired';
+                                        break;
+                                    case 'active':
+                                        $statusClass = 'bg-success';
+                                        $statusText = 'Running';
+                                        break;
+                                    case 'upcoming':
+                                        $statusClass = 'bg-info';
+                                        $statusText = 'Upcoming';
+                                        break;
+                                    default:
+                                        $statusClass = 'bg-secondary';
+                                        $statusText = 'Unknown';
+                                }
+                                ?>
+                                <span class="badge <?php echo $statusClass; ?>" style="font-size: 0.7rem;">
+                                    <?php echo $statusText; ?>
+                                </span>
+                            <?php endif; ?>
+                        </div>
                     </td>
                     <td>
                         <div><?php echo date('d M Y', strtotime($banner['date_uploaded'])); ?></div>
@@ -256,8 +314,22 @@ while ($row = $result->fetch_assoc()) {
                             <input type="text" class="form-control" name="title" placeholder="e.g., Christmas Special Menu" required>
                         </div>
                         <div class="mb-3">
-                            <label for="event_date" class="form-label">Event Date</label>
-                            <input type="date" class="form-control" name="event_date" required>
+                            <label for="description" class="form-label">Event Description</label>
+                            <textarea class="form-control" name="description" rows="3" placeholder="Describe what this event is about, special offers, etc." required></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="event_start_date" class="form-label">Event Start Date</label>
+                                    <input type="date" class="form-control" name="event_start_date" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="event_end_date" class="form-label">Event End Date</label>
+                                    <input type="date" class="form-control" name="event_end_date" required>
+                                </div>
+                            </div>
                         </div>
                         <div class="mb-3">
                             <label for="banner_image" class="form-label">Event Banner Image</label>
@@ -324,6 +396,25 @@ while ($row = $result->fetch_assoc()) {
                     bsAlert.close();
                 }, 5000);
             });
+            
+            // Set minimum date for event dates to today
+            const today = new Date().toISOString().split('T')[0];
+            const startDateInput = document.querySelector('input[name="event_start_date"]');
+            const endDateInput = document.querySelector('input[name="event_end_date"]');
+            
+            if (startDateInput) {
+                startDateInput.setAttribute('min', today);
+                startDateInput.addEventListener('change', function() {
+                    endDateInput.setAttribute('min', this.value);
+                    if (endDateInput.value && endDateInput.value < this.value) {
+                        endDateInput.value = this.value;
+                    }
+                });
+            }
+            
+            if (endDateInput) {
+                endDateInput.setAttribute('min', today);
+            }
         });
     </script>
 </body>

@@ -15,9 +15,47 @@
 }
 
 .carousel-item img {
-  height: 250px;
+  height: auto;
   object-fit: cover;
   width: 100%;
+}
+
+/* Event Info Overlay */
+.event-info-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
+  color: white;
+  padding: 20px;
+  transition: all 0.3s ease;
+}
+
+.event-content h4 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.event-content p {
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+  line-height: 1.4;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+  opacity: 0.95;
+}
+
+.event-dates {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #ffd700;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.event-dates i {
+  margin-right: 6px;
 }
 
 /* No Events Styling */
@@ -91,14 +129,23 @@
   height: 12px;
   border-radius: 50%;
   margin: 0 4px;
-  background: rgba(255, 255, 255, 0.5);
-  border: 2px solid rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.4);
   transition: all 0.3s ease;
+  opacity: 0.7;
 }
 
 .carousel-indicators button.active {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.9);
   transform: scale(1.2);
+  opacity: 1;
+}
+
+.carousel-indicators button:hover {
+  background: rgba(255, 255, 255, 0.5);
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  opacity: 0.9;
 }
 
 /* Showcase Section */
@@ -272,6 +319,22 @@
   .no-events-content p {
     font-size: 1rem;
   }
+  
+  .event-info-overlay {
+    padding: 15px;
+  }
+  
+  .event-content h4 {
+    font-size: 1.3rem;
+  }
+  
+  .event-content p {
+    font-size: 0.85rem;
+  }
+  
+  .event-dates {
+    font-size: 0.8rem;
+  }
 }
 
 @media (max-width: 480px) {
@@ -312,6 +375,149 @@
   
   .no-events-content h3 {
     font-size: 1.3rem;
+  }
+  
+  .event-info-overlay {
+    padding: 12px;
+  }
+  
+  .event-content h4 {
+    font-size: 1.1rem;
+    margin-bottom: 6px;
+  }
+  
+  .event-content p {
+    font-size: 0.8rem;
+    margin-bottom: 6px;
+  }
+  
+  .event-dates {
+    font-size: 0.75rem;
+  }
+
+@media (max-width: 480px) {
+  .banner-carousel {
+    max-width: 100%;
+    margin: 20px auto;
+  }
+  
+  .carousel-item img {
+    height: 180px;
+  }
+  
+  .carousel-caption {
+    padding: 15px;
+  }
+  
+  .carousel-caption h5 {
+    font-size: 1.4rem;
+  }
+  
+  .carousel-control-prev,
+  .carousel-control-next {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .carousel-control-prev {
+    left: 10px;
+  }
+  
+  .carousel-control-next {
+    right: 10px;
+  }
+  
+  .no-events {
+    padding: 30px 10px;
+  }
+  
+  .no-events-content h3 {
+    font-size: 1.3rem;
+  }
+}
+
+/* Additional Mobile Responsiveness */
+@media (max-width: 360px) {
+  .banner-carousel {
+    margin: 15px auto;
+    border-radius: 12px;
+  }
+  
+  .carousel-item img {
+    height: 160px;
+  }
+  
+  .event-info-overlay {
+    padding: 12px;
+  }
+  
+  .event-content h4 {
+    font-size: 1.1rem;
+    margin-bottom: 6px;
+  }
+  
+  .event-content p {
+    font-size: 0.8rem;
+    margin-bottom: 6px;
+  }
+  
+  .event-dates {
+    font-size: 0.75rem;
+  }
+  
+  .carousel-control-prev,
+  .carousel-control-next {
+    width: 35px;
+    height: 35px;
+  }
+  
+  .no-events {
+    padding: 20px 8px;
+  }
+  
+  .no-events-content h3 {
+    font-size: 1.1rem;
+  }
+  
+  .no-events-content p {
+    font-size: 0.85rem;
+  }
+}
+
+/* Container responsiveness */
+.container {
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
+/* Ensure proper spacing for mobile */
+@media (max-width: 768px) {
+  .main-content, main {
+    padding-bottom: 80px !important;
+  }
+  
+  body {
+    overflow-x: hidden;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content, main {
+    padding-bottom: 70px !important;
   }
 }
 

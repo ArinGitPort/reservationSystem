@@ -28,7 +28,9 @@ CREATE TABLE banners (
     banner_id INT AUTO_INCREMENT PRIMARY KEY,
     filename VARCHAR(255) NOT NULL,
     title VARCHAR(255) NOT NULL,
-    event_date DATE NULL,
+    description TEXT NULL,
+    event_start_date DATE NULL,
+    event_end_date DATE NULL,
     active BOOLEAN DEFAULT 1,
     date_uploaded TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -41,7 +43,6 @@ CREATE TABLE menu (
     is_best_seller BOOLEAN DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
 
 INSERT INTO customers (first_name, last_name, email, phone) VALUES
 ('John', 'Doe', 'john.doe@email.com', '123-456-7890'),

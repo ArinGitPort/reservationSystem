@@ -240,7 +240,7 @@ while ($row = $result->fetch_assoc()) {
                         <div class="fw-bold"><?php echo htmlspecialchars($item['name']); ?></div>
                     </td>
                     <td>
-                        <span class="fw-bold text-primary">$<?php echo number_format($item['price'], 2); ?></span>
+                        <span class="fw-bold text-primary">₱<?php echo number_format($item['price'], 2); ?></span>
                     </td>
                     <td>
                         <?php if ($item['is_best_seller']): ?>
@@ -288,7 +288,7 @@ while ($row = $result->fetch_assoc()) {
                             <input type="text" class="form-control" name="name" required>
                         </div>
                         <div class="mb-3">
-                            <label for="price" class="form-label">Price ($)</label>
+                            <label for="price" class="form-label">Price (₱)</label>
                             <input type="number" class="form-control" name="price" step="0.01" min="0" required>
                         </div>
                         <div class="mb-3">
@@ -327,7 +327,7 @@ while ($row = $result->fetch_assoc()) {
                             <input type="text" class="form-control" name="name" id="edit_name" required>
                         </div>
                         <div class="mb-3">
-                            <label for="edit_price" class="form-label">Price ($)</label>
+                            <label for="edit_price" class="form-label">Price (₱)</label>
                             <input type="number" class="form-control" name="price" id="edit_price" step="0.01" min="0" required>
                         </div>
                         <div class="mb-3">

@@ -1,9 +1,10 @@
 
+/* Footer Styles */
 .footer {
     background: #fff;
     color: #222;
     text-align: center;
-    padding: 1.5rem 0 1rem 0;
+    padding: 1.5rem 1rem 1rem;
     width: 100%;
     position: fixed;
     left: 0;
@@ -11,10 +12,59 @@
     z-index: 100;
     border-top: 1px solid #eee;
     box-shadow: 0 -2px 8px -2px rgba(0,0,0,0.05);
+    box-sizing: border-box;
 }
+
+.footer-content {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
 .footer-content p {
     margin: 0.2rem 0;
     font-size: 1rem;
     letter-spacing: 1px;
     color: #222;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    .footer {
+        padding: 1rem 0.8rem 0.8rem;
+    }
+    
+    .footer-content p {
+        font-size: 0.9rem;
+        letter-spacing: 0.5px;
+        line-height: 1.4;
+    }
+}
+
+@media (max-width: 480px) {
+    .footer {
+        padding: 0.8rem 0.5rem 0.6rem;
+    }
+    
+    .footer-content p {
+        font-size: 0.8rem;
+        letter-spacing: 0.3px;
+        margin: 0.1rem 0;
+    }
+}
+
+/* Ensure main content has bottom padding to account for fixed footer */
+main, .main-content {
+    padding-bottom: 80px !important;
+}
+
+@media (max-width: 768px) {
+    main, .main-content {
+        padding-bottom: 70px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    main, .main-content {
+        padding-bottom: 60px !important;
+    }
 }

@@ -1,4 +1,5 @@
-<div class="sidebar">
+<div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+<div class="sidebar" id="sidebar">
     <div class="sidebar-header">
         <h4><i class="fas fa-utensils me-2"></i>Ellen's Food House</h4>
         <p class="text-muted">Admin Panel</p>
@@ -101,6 +102,50 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('events-link').classList.add('active');
     } else if (currentPage.includes('menu_management.php')) {
         document.getElementById('menu-link').classList.add('active');
+    }
+    
+    // Close sidebar when clicking on links in mobile
+    navLinks.forEach(link => {
+        link.addEventListener('click', function() {
+            if (window.innerWidth <= 768) {
+                closeSidebar();
+            }
+        });
+    });
+});
+
+// Mobile sidebar toggle functionality
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.querySelector('.sidebar-overlay');
+    const body = document.body;
+    
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
+    body.classList.toggle('sidebar-open');
+}
+
+function closeSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.querySelector('.sidebar-overlay');
+    const body = document.body;
+    
+    sidebar.classList.remove('active');
+    overlay.classList.remove('active');
+    body.classList.remove('sidebar-open');
+}
+
+// Close sidebar on escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeSidebar();
+    }
+});
+
+// Close sidebar on window resize if desktop
+window.addEventListener('resize', function() {
+    if (window.innerWidth > 768) {
+        closeSidebar();
     }
 });
 </script>
