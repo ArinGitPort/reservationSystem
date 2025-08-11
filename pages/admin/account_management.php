@@ -99,62 +99,57 @@ $customers = selectAll("SELECT * FROM customers ORDER BY created_at DESC");
             </div>
         <?php endif; ?>
         
-        <!-- Tab Content -->
-        <div class="tab-content" id="managementTabsContent">
-            <!-- Customer Management Tab -->
-            <div class="tab-pane fade show active" id="customers" role="tabpanel">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h3><i class="fas fa-users me-2"></i>Customer Management</h3>
-                    <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#addCustomerModal">
-                        <i class="fas fa-plus me-2"></i>Add Customer
-                    </button>
-                </div>
-                
-                <div class="table-container">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>NAME</th>
-                                <th>EMAIL</th>
-                                <th>PHONE</th>
-                                <th>ADDED</th>
-                                <th>MANAGE</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($customers as $index => $customer): ?>
-                            <tr>
-                                <td><?php echo $index + 1; ?></td>
-                                <td>
-                                    <div class="fw-bold"><?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?></div>
-                                </td>
-                                <td><?php echo htmlspecialchars($customer['email']); ?></td>
-                                <td><?php echo htmlspecialchars($customer['phone'] ?: 'N/A'); ?></td>
-                                <td>
-                                    <div><?php echo date('d M Y', strtotime($customer['created_at'])); ?></div>
-                                    <small class="text-muted"><?php echo date('h:i A', strtotime($customer['created_at'])); ?></small>
-                                </td>
-                                <td>
-                                    <div class="action-buttons">
-                                        <button class="btn btn-sm btn-outline-dark" 
-                                                onclick="editCustomer(<?php echo $customer['id']; ?>, '<?php echo htmlspecialchars($customer['first_name']); ?>', '<?php echo htmlspecialchars($customer['last_name']); ?>', '<?php echo htmlspecialchars($customer['email']); ?>', '<?php echo htmlspecialchars($customer['phone']); ?>')"
-                                                data-bs-toggle="modal" data-bs-target="#editCustomerModal">
-                                            <i class="fas fa-edit"></i>
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-danger" 
-                                                onclick="confirmDelete('customer', <?php echo $customer['id']; ?>)"
-                                                data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+        <!-- Customer Management -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3><i class="fas fa-users me-2"></i>Customer Management</h3>
+            <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#addCustomerModal">
+                <i class="fas fa-plus me-2"></i>Add Customer
+            </button>
+        </div>
+        
+        <div class="table-container">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>NAME</th>
+                        <th>EMAIL</th>
+                        <th>PHONE</th>
+                        <th>ADDED</th>
+                        <th>MANAGE</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($customers as $index => $customer): ?>
+                    <tr>
+                        <td><?php echo $index + 1; ?></td>
+                        <td>
+                            <div class="fw-bold"><?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?></div>
+                        </td>
+                        <td><?php echo htmlspecialchars($customer['email']); ?></td>
+                        <td><?php echo htmlspecialchars($customer['phone'] ?: 'N/A'); ?></td>
+                        <td>
+                            <div><?php echo date('d M Y', strtotime($customer['created_at'])); ?></div>
+                            <small class="text-muted"><?php echo date('h:i A', strtotime($customer['created_at'])); ?></small>
+                        </td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="btn btn-sm btn-outline-dark" 
+                                        onclick="editCustomer(<?php echo $customer['id']; ?>, '<?php echo htmlspecialchars($customer['first_name']); ?>', '<?php echo htmlspecialchars($customer['last_name']); ?>', '<?php echo htmlspecialchars($customer['email']); ?>', '<?php echo htmlspecialchars($customer['phone']); ?>')"
+                                        data-bs-toggle="modal" data-bs-target="#editCustomerModal">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" 
+                                        onclick="confirmDelete('customer', <?php echo $customer['id']; ?>)"
+                                        data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     </div>
     <!-- End Main Content -->

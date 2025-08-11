@@ -9,13 +9,13 @@
             <h6 class="menu-title">MANAGEMENT</h6>
             <ul class="nav flex-column">
                 <li class="nav-item">
-                    <a class="nav-link active" href="#" onclick="showTab('customers')" id="customers-link">
+                    <a class="nav-link" href="account_management.php" id="customers-link">
                         <i class="fas fa-users me-2"></i>
                         <span>Customer Management</span>
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="#" onclick="showTab('reservations')" id="reservations-link">
+                    <a class="nav-link" href="reservation_management.php" id="reservations-link">
                         <i class="fas fa-calendar-alt me-2"></i>
                         <span>Reservation Management</span>
                     </a>
@@ -70,21 +70,21 @@
 </div>
 
 <script>
-function showTab(tabName) {
-    // Remove active class from all nav links
-    document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+// Set active navigation link based on current page
+document.addEventListener('DOMContentLoaded', function() {
+    const currentPage = window.location.pathname;
+    const navLinks = document.querySelectorAll('.sidebar .nav-link');
+    
+    // Remove active class from all links
+    navLinks.forEach(link => {
         link.classList.remove('active');
     });
     
-    // Add active class to clicked link
-    document.getElementById(tabName + '-link').classList.add('active');
-    
-    // Hide all tab panes
-    document.querySelectorAll('.tab-pane').forEach(pane => {
-        pane.classList.remove('show', 'active');
-    });
-    
-    // Show selected tab pane
-    document.getElementById(tabName).classList.add('show', 'active');
-}
+    // Add active class to current page link
+    if (currentPage.includes('account_management.php')) {
+        document.getElementById('customers-link').classList.add('active');
+    } else if (currentPage.includes('reservation_management.php')) {
+        document.getElementById('reservations-link').classList.add('active');
+    }
+});
 </script>
