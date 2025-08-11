@@ -7,7 +7,7 @@
         <div class="logo">Ellens Food House</div>
         <ul class="nav-links">
             <li><a href="../pages/home.php">Home</a></li>
-            <li><a href="#menu">Menu</a></li>
+            <li><a href="../pages/menu.php">Menu</a></li>
             <li><a href="#about">About</a></li>
             <li><a href="#contact">Contact</a></li>
         </ul>

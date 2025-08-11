@@ -20,6 +20,18 @@
                         <span>Reservation Management</span>
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="banner_management.php" id="banners-link">
+                        <i class="fas fa-images me-2"></i>
+                        <span>Banner Management</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="menu_management.php" id="menu-link">
+                        <i class="fas fa-utensils me-2"></i>
+                        <span>Menu Management</span>
+                    </a>
+                </li>
             </ul>
         </div>
         
@@ -85,6 +97,10 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('customers-link').classList.add('active');
     } else if (currentPage.includes('reservation_management.php')) {
         document.getElementById('reservations-link').classList.add('active');
+    } else if (currentPage.includes('banner_management.php')) {
+        document.getElementById('banners-link').classList.add('active');
+    } else if (currentPage.includes('menu_management.php')) {
+        document.getElementById('menu-link').classList.add('active');
     }
 });
 </script>
