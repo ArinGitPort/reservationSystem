@@ -394,6 +394,7 @@
   .event-dates {
     font-size: 0.75rem;
   }
+}
 
 @media (max-width: 480px) {
   .banner-carousel {
@@ -520,4 +521,3 @@
     padding-bottom: 70px !important;
   }
 }
-
