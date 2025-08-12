@@ -67,7 +67,16 @@ function save($tableOrSql, $data = null, $fileField = null, $uploadDir = null, $
                     preg_match('/INSERT INTO (\w+)/', $tableOrSql, $matches);
                     if ($matches[1]) {
                         $tableName = $matches[1];
-                        mysqli_query($connection, "UPDATE $tableName SET image_path = '$newname' WHERE id = $insertId");
+                        
+                        // Determine correct ID column
+                        $idColumn = 'id'; // default
+                        if ($tableName === 'menu') {
+                            $idColumn = 'menu_id';
+                        } elseif ($tableName === 'banners') {
+                            $idColumn = 'banner_id';
+                        }
+                        
+                        mysqli_query($connection, "UPDATE $tableName SET image_path = '$newname' WHERE $idColumn = $insertId");
                     }
                 }
             }
@@ -125,8 +134,15 @@ function save($tableOrSql, $data = null, $fileField = null, $uploadDir = null, $
                     
                     move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname);
                     
-                    // Update the record with image path
-                    $updateSql = "UPDATE {$table} SET image_path = ? WHERE " . (isset($data['menu_id']) ? 'menu_id' : (isset($data['banner_id']) ? 'banner_id' : 'id')) . " = ?";
+                    // Update the record with image path - determine correct ID column
+                    $idColumn = 'id'; // default
+                    if ($table === 'menu') {
+                        $idColumn = 'menu_id';
+                    } elseif ($table === 'banners') {
+                        $idColumn = 'banner_id';
+                    }
+                    
+                    $updateSql = "UPDATE {$table} SET image_path = ? WHERE {$idColumn} = ?";
                     $updateStmt = mysqli_prepare($connection, $updateSql);
                     mysqli_stmt_bind_param($updateStmt, 'si', $newname, $insertId);
                     mysqli_stmt_execute($updateStmt);
