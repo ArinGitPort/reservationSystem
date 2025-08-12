@@ -62,7 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // Handle file upload if new image provided
                 if (isset($_FILES['menu_image']) && $_FILES['menu_image']['error'] == 0) {
                     // Get old image to delete it if extension changed
-                    $oldItem = selectOne("SELECT image_path FROM menu WHERE menu_id = ?", "i", $menuId);
+                    $oldItemData = fetch('menu', "menu_id = $menuId");
+                    $oldItem = !empty($oldItemData) ? $oldItemData[0] : null;
                     
                     $extension = strtolower(pathinfo($_FILES['menu_image']['name'], PATHINFO_EXTENSION));
                     $newFilename = $menuId . '.' . $extension;
@@ -103,8 +104,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             case 'delete_menu_item':
                 $menuId = $_POST['menu_id'];
                 
-                // Get image filename from DB using generic selectOne function
-                $item = selectOne("SELECT image_path FROM menu WHERE menu_id = ?", "i", $menuId);
+                // Get image filename from DB using generic fetch function
+                $itemData = fetch('menu', "menu_id = $menuId");
+                $item = !empty($itemData) ? $itemData[0] : null;
                 $imagePath = $item ? $item['image_path'] : '';
                 
                 // Delete from database using generic delete function

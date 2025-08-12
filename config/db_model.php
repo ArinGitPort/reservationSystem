@@ -228,38 +228,6 @@ function delete($table, $idValue, $idColumn = 'id') {
     return $result;
 }
 
-// Generic select single record function
-function selectOne($sql, $types = null, ...$params) {
-    global $connection;
-    
-    if ($types) {
-        $stmt = mysqli_prepare($connection, $sql);
-        if (!$stmt) {
-            return false;
-        }
-        mysqli_stmt_bind_param($stmt, $types, ...$params);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $data = mysqli_fetch_assoc($result);
-        mysqli_stmt_close($stmt);
-        return $data;
-    } else {
-        $result = mysqli_query($connection, $sql);
-        return mysqli_fetch_assoc($result);
-    }
-}
-
-// Generic select multiple records function
-function selectAll($sql) {
-    global $connection;
-    $result = mysqli_query($connection, $sql);
-    $data = [];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $data[] = $row;
-    }
-    return $data;
-}
-
 // Redirect function
 function redirect_to($new_location) {
     header("Location: ".$new_location);

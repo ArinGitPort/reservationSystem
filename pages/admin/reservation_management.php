@@ -74,7 +74,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 // Get all customers and reservations for display
 $customers = fetch('customers', '', 'created_at DESC');
-$reservations = selectAll("SELECT r.*, c.first_name, c.last_name, c.email FROM reservations r JOIN customers c ON r.customer_id = c.id ORDER BY r.reservation_date DESC, r.reservation_time DESC");
+// For complex joins, we'll use direct mysqli_query since fetch() is for single table queries
+global $connection;
+$reservationQuery = "SELECT r.*, c.first_name, c.last_name, c.email FROM reservations r JOIN customers c ON r.customer_id = c.id ORDER BY r.reservation_date DESC, r.reservation_time DESC";
+$result = mysqli_query($connection, $reservationQuery);
+$reservations = [];
+while ($row = mysqli_fetch_assoc($result)) {
+    $reservations[] = $row;
+}
 ?>
 
 <!DOCTYPE html>

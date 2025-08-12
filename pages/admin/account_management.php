@@ -64,7 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // Handle profile image upload if provided
                 if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] == 0) {
                     // Get old image to delete it if extension changed
-                    $oldCustomer = selectOne("SELECT image_path FROM customers WHERE id = ?", "i", $id);
+                    $oldCustomerData = fetch('customers', "id = $id");
+                    $oldCustomer = !empty($oldCustomerData) ? $oldCustomerData[0] : null;
                     
                     $extension = strtolower(pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION));
                     $newFilename = $id . '.' . $extension;
@@ -105,8 +106,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             case 'delete_customer':
                 $id = $_POST['customer_id'];
                 
-                // Get image filename from DB using generic selectOne function
-                $customer = selectOne("SELECT image_path FROM customers WHERE id = ?", "i", $id);
+                // Get image filename from DB using generic fetch function
+                $customerData = fetch('customers', "id = $id");
+                $customer = !empty($customerData) ? $customerData[0] : null;
                 $imagePath = $customer ? $customer['image_path'] : '';
                 
                 // Delete from database using generic delete function
