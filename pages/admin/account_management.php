@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $email = $_POST['email'];
                 $phone = $_POST['phone'];
                 
-                // Prepare update data using generic update function
+                // Prepare update data
                 $updateData = [
                     'first_name' => $firstName,
                     'last_name' => $lastName,
@@ -61,42 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     'phone' => $phone
                 ];
                 
-                // Handle profile image upload if provided
-                if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] == 0) {
-                    // Get old image to delete it if extension changed
-                    $oldCustomerData = fetch('customers', "id = $id");
-                    $oldCustomer = !empty($oldCustomerData) ? $oldCustomerData[0] : null;
-                    
-                    $extension = strtolower(pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION));
-                    $newFilename = $id . '.' . $extension;
-                    
-                    // Validate file type
-                    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-                    $fileType = $_FILES['profile_image']['type'];
-                    if (in_array($fileType, $allowedTypes)) {
-                        // Create directory if it doesn't exist
-                        if (!is_dir('../../uploads/profiles/')) {
-                            mkdir('../../uploads/profiles/', 0755, true);
-                        }
-                        
-                        // Delete old image if it has different extension
-                        if ($oldCustomer && $oldCustomer['image_path'] && $oldCustomer['image_path'] !== $newFilename) {
-                            $oldImagePath = "../../uploads/profiles/" . $oldCustomer['image_path'];
-                            if (file_exists($oldImagePath)) {
-                                unlink($oldImagePath);
-                            }
-                        }
-                        
-                        // Move uploaded file
-                        if (move_uploaded_file($_FILES['profile_image']['tmp_name'], '../../uploads/profiles/' . $newFilename)) {
-                            // Add image path to update data
-                            $updateData['image_path'] = $newFilename;
-                        }
-                    }
-                }
-                
-                // Update customer using generic update function
-                if (update('customers', $updateData, "id = $id")) {
+                // Update customer using generic update function with file handling
+                if (update('customers', $updateData, "id = $id", 'profile_image', '../../uploads/profiles/', $id)) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Customer updated successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to update customer.", "error");
@@ -106,23 +72,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             case 'delete_customer':
                 $id = $_POST['customer_id'];
                 
-                // Get image filename from DB using generic fetch function
-                $customerData = fetch('customers', "id = $id");
-                $customer = !empty($customerData) ? $customerData[0] : null;
-                $imagePath = $customer ? $customer['image_path'] : '';
+                // Check if customer has any reservations
+                $reservations = fetch('reservations', "customer_id = $id");
                 
-                // Delete from database using generic delete function
-                if (delete("customers", $id)) {
-                    // Delete profile image file if exists
-                    if ($imagePath) {
-                        $filePath = "../../uploads/profiles/" . $imagePath;
-                        if (file_exists($filePath)) {
-                            unlink($filePath);
-                        }
-                    }
-                    redirect_with_message($_SERVER['PHP_SELF'], "Customer deleted successfully!", "success");
+                if (!empty($reservations)) {
+                    redirect_with_message($_SERVER['PHP_SELF'], "Cannot delete customer. This customer has existing reservations. Please cancel or reassign the reservations first.", "error");
                 } else {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete customer.", "error");
+                    // Get image filename from DB using generic fetch function
+                    $customerData = fetch('customers', "id = $id");
+                    $customer = !empty($customerData) ? $customerData[0] : null;
+                    $imagePath = $customer ? $customer['image_path'] : '';
+                    
+                    // Delete from database using generic delete function
+                    if (delete("customers", $id)) {
+                        // Delete profile image file if exists
+                        if ($imagePath) {
+                            $filePath = "../../uploads/profiles/" . $imagePath;
+                            if (file_exists($filePath)) {
+                                unlink($filePath);
+                            }
+                        }
+                        redirect_with_message($_SERVER['PHP_SELF'], "Customer deleted successfully!", "success");
+                    } else {
+                        redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete customer.", "error");
+                    }
                 }
                 break;
         }

@@ -2,13 +2,13 @@
 define("DB_SERVER", "localhost");
 define("DB_NAME", "ellenfoodhouse");
 define("DB_USER", "root");
-define("DB_PASS", "1234");
+define("DB_PASS", "password");
 
 $connection = mysqli_connect(DB_SERVER, DB_USER, DB_PASS, DB_NAME);
-	if (mysqli_connect_errno()) {
+if (mysqli_connect_errno()) {
     die("Database connection failed: " .
         mysqli_connect_error() .
-        "(" . mysqli_connect_errno() . ")"
+        " (" . mysqli_connect_errno() . ")"
     );
 }
 
@@ -52,32 +52,54 @@ function save($tableOrSql, $data = null, $fileField = null, $uploadDir = null, $
             
             // Handle file upload if specified
             if ($fileField && $uploadDir && isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] == 0) {
+                // Validate file type
+                $fileType = $_FILES[$fileField]['type'];
+                if (!in_array($fileType, $allowedTypes)) {
+                    return false; // Invalid file type
+                }
+                
+                // Validate file size (2MB max)
+                $maxFileSize = 2 * 1024 * 1024;
+                if ($_FILES[$fileField]['size'] > $maxFileSize) {
+                    return false; // File too large
+                }
+                
                 $extension = strtolower(pathinfo($_FILES[$fileField]['name'], PATHINFO_EXTENSION));
-                $newname = "$insertId.$extension";
+                
+                // Generate filename based on context (check if it's for banners)
+                if (strpos($tableOrSql, 'banners') !== false) {
+                    // For banners, use unique timestamp-based filename
+                    $newname = 'banner_' . time() . '_' . rand(1000, 9999) . '.' . $extension;
+                } else {
+                    // For other tables, use record ID
+                    $newname = "$insertId.$extension";
+                }
                 
                 // Create directory if it doesn't exist
                 if (!is_dir($uploadDir)) {
                     mkdir($uploadDir, 0755, true);
                 }
                 
-                move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname);
-                
-                // Update the record with image path if it's a table-based insert
-                if (strpos($tableOrSql, 'INSERT INTO') !== false) {
-                    // Extract table name from INSERT query
-                    preg_match('/INSERT INTO (\w+)/', $tableOrSql, $matches);
-                    if ($matches[1]) {
-                        $tableName = $matches[1];
-                        
-                        // Determine correct ID column
-                        $idColumn = 'id'; // default
-                        if ($tableName === 'menu') {
-                            $idColumn = 'menu_id';
-                        } elseif ($tableName === 'banners') {
-                            $idColumn = 'banner_id';
+                if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname)) {
+                    // Update the record with image path if it's a table-based insert
+                    if (strpos($tableOrSql, 'INSERT INTO') !== false) {
+                        // Extract table name from INSERT query
+                        preg_match('/INSERT INTO (\w+)/', $tableOrSql, $matches);
+                        if ($matches[1]) {
+                            $tableName = $matches[1];
+                            
+                            // Determine correct ID column and image field
+                            $idColumn = 'id'; // default
+                            $imageField = 'image_path'; // default
+                            if ($tableName === 'menu') {
+                                $idColumn = 'menu_id';
+                            } elseif ($tableName === 'banners') {
+                                $idColumn = 'banner_id';
+                                $imageField = 'filename';
+                            }
+                            
+                            mysqli_query($connection, "UPDATE $tableName SET $imageField = '$newname' WHERE $idColumn = $insertId");
                         }
-                        
-                        mysqli_query($connection, "UPDATE $tableName SET image_path = '$newname' WHERE $idColumn = $insertId");
                     }
                 }
             }
@@ -124,26 +146,46 @@ function save($tableOrSql, $data = null, $fileField = null, $uploadDir = null, $
             if ($fileField && $uploadDir && isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] == 0) {
                 // Validate file type
                 $fileType = $_FILES[$fileField]['type'];
-                if (in_array($fileType, $allowedTypes)) {
-                    $extension = strtolower(pathinfo($_FILES[$fileField]['name'], PATHINFO_EXTENSION));
+                if (!in_array($fileType, $allowedTypes)) {
+                    mysqli_stmt_close($stmt);
+                    return false; // Invalid file type
+                }
+                
+                // Validate file size (2MB max)
+                $maxFileSize = 2 * 1024 * 1024;
+                if ($_FILES[$fileField]['size'] > $maxFileSize) {
+                    mysqli_stmt_close($stmt);
+                    return false; // File too large
+                }
+                
+                $extension = strtolower(pathinfo($_FILES[$fileField]['name'], PATHINFO_EXTENSION));
+                
+                // Generate filename based on table type
+                if ($table === 'banners') {
+                    // For banners, use unique timestamp-based filename
+                    $newname = 'banner_' . time() . '_' . rand(1000, 9999) . '.' . $extension;
+                } else {
+                    // For other tables, use record ID
                     $newname = "$insertId.$extension";
-                    
-                    // Create directory if it doesn't exist
-                    if (!is_dir($uploadDir)) {
-                        mkdir($uploadDir, 0755, true);
-                    }
-                    
-                    move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname);
-                    
-                    // Update the record with image path - determine correct ID column
+                }
+                
+                // Create directory if it doesn't exist
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+                
+                if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname)) {
+                    // Update the record with image path - determine correct ID column and image field
                     $idColumn = 'id'; // default
+                    $imageField = 'image_path'; // default
                     if ($table === 'menu') {
                         $idColumn = 'menu_id';
                     } elseif ($table === 'banners') {
                         $idColumn = 'banner_id';
+                        $imageField = 'filename';
                     }
                     
-                    $updateSql = "UPDATE {$table} SET image_path = ? WHERE {$idColumn} = ?";
+                    $updateSql = "UPDATE {$table} SET $imageField = ? WHERE {$idColumn} = ?";
                     $updateStmt = mysqli_prepare($connection, $updateSql);
                     mysqli_stmt_bind_param($updateStmt, 'si', $newname, $insertId);
                     mysqli_stmt_execute($updateStmt);
@@ -162,7 +204,7 @@ function save($tableOrSql, $data = null, $fileField = null, $uploadDir = null, $
 
 // Generic update function
 // Can accept either raw SQL or table name with data array and conditions
-function update($tableOrSql, $data = null, $conditions = '') {
+function update($tableOrSql, $data = null, $conditions = '', $fileField = null, $uploadDir = null, $recordId = null, $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png']) {
     global $connection;
     
     if ($data === null) {
@@ -171,6 +213,49 @@ function update($tableOrSql, $data = null, $conditions = '') {
     } else {
         // New way: table name with data array
         $table = $tableOrSql;
+        
+        // Handle file upload if specified
+        if ($fileField && $uploadDir && $recordId && isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] == 0) {
+            // Get old record to potentially delete old image
+            $oldRecord = fetch($table, $conditions);
+            $oldData = !empty($oldRecord) ? $oldRecord[0] : null;
+            
+            // Validate file type
+            $fileType = $_FILES[$fileField]['type'];
+            if (!in_array($fileType, $allowedTypes)) {
+                return false; // Invalid file type
+            }
+            
+            // Validate file size (2MB max)
+            $maxFileSize = 2 * 1024 * 1024;
+            if ($_FILES[$fileField]['size'] > $maxFileSize) {
+                return false; // File too large
+            }
+            
+            $extension = strtolower(pathinfo($_FILES[$fileField]['name'], PATHINFO_EXTENSION));
+            $newFilename = $recordId . '.' . $extension;
+            
+            // Create directory if it doesn't exist
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+            
+            // Delete old image if it has different filename
+            $imageField = ($table === 'banners') ? 'filename' : 'image_path';
+            if ($oldData && isset($oldData[$imageField]) && $oldData[$imageField] && $oldData[$imageField] !== $newFilename) {
+                $oldImagePath = $uploadDir . $oldData[$imageField];
+                if (file_exists($oldImagePath)) {
+                    unlink($oldImagePath);
+                }
+            }
+            
+            // Move uploaded file
+            if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newFilename)) {
+                // Add image path to update data
+                $data[$imageField] = $newFilename;
+            }
+        }
+        
         $setParts = [];
         $values = [];
         

@@ -1,5 +1,4 @@
 <?php
-require_once '../../config/db_connect.php';
 require_once '../../config/db_model.php';
 
 // Handle form submissions
@@ -37,21 +36,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 // Handle file upload
                 if (isset($_FILES['banner_image']) && $_FILES['banner_image']['error'] == 0) {
-                    $uploadResult = uploadBannerImage($_FILES['banner_image']);
+                    // Prepare data for insertion
+                    $bannerData = [
+                        'filename' => '',  // Will be updated by the save function
+                        'title' => $title,
+                        'description' => $description,
+                        'event_start_date' => $event_start_date,
+                        'event_end_date' => $event_end_date,
+                        'active' => $active
+                    ];
                     
-                    if ($uploadResult['success']) {
-                        // Save to database using basic mysqli
-                        $stmt = $conn->prepare("INSERT INTO banners (filename, title, description, event_start_date, event_end_date, active) VALUES (?, ?, ?, ?, ?, ?)");
-                        $stmt->bind_param("sssssi", $uploadResult['filename'], $title, $description, $event_start_date, $event_end_date, $active);
-                        
-                        if ($stmt->execute()) {
-                            redirect_with_message($_SERVER['PHP_SELF'], "Event banner uploaded successfully!", "success");
-                        } else {
-                            redirect_with_message($_SERVER['PHP_SELF'], "Failed to save event banner to database.", "error");
-                        }
-                        $stmt->close();
+                    // Use centralized save function with file handling
+                    $bannerId = save('banners', $bannerData, 'banner_image', '../../uploads/banners/');
+                    
+                    if ($bannerId) {
+                        redirect_with_message($_SERVER['PHP_SELF'], "Event banner uploaded successfully!", "success");
                     } else {
-                        redirect_with_message($_SERVER['PHP_SELF'], $uploadResult['message'], "error");
+                        redirect_with_message($_SERVER['PHP_SELF'], "Failed to save event banner to database.", "error");
                     }
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "No file uploaded or upload error.", "error");
@@ -63,27 +64,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $currentStatus = $_POST['current_status'];
                 $newStatus = $currentStatus == 1 ? 0 : 1;
                 
-                $stmt = $conn->prepare("UPDATE banners SET active = ? WHERE banner_id = ?");
-                $stmt->bind_param("ii", $newStatus, $bannerId);
-                
-                if ($stmt->execute()) {
+                // Use centralized update function
+                $updateData = ['active' => $newStatus];
+                if (update('banners', $updateData, "banner_id = $bannerId")) {
                     $statusText = $newStatus ? 'activated' : 'deactivated';
                     redirect_with_message($_SERVER['PHP_SELF'], "Banner {$statusText} successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to update banner status.", "error");
                 }
-                $stmt->close();
                 break;
                 
             case 'delete_banner':
                 $bannerId = $_POST['banner_id'];
                 $filename = $_POST['filename'];
                 
-                // Delete from database
-                $stmt = $conn->prepare("DELETE FROM banners WHERE banner_id = ?");
-                $stmt->bind_param("i", $bannerId);
-                
-                if ($stmt->execute()) {
+                // Delete from database using centralized delete function
+                if (delete('banners', $bannerId, 'banner_id')) {
                     // Delete file from server
                     $filePath = "../../uploads/banners/" . $filename;
                     if (file_exists($filePath)) {
@@ -93,68 +89,33 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete banner.", "error");
                 }
-                $stmt->close();
                 break;
         }
-    }
-}
-
-/**
- * Upload banner image with validation
- */
-function uploadBannerImage($file) {
-    $uploadDir = "../../uploads/banners/";
-    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-    $maxSize = 2 * 1024 * 1024; // 2MB
-    
-    // Validate file type
-    $fileType = $file['type'];
-    if (!in_array($fileType, $allowedTypes)) {
-        return ['success' => false, 'message' => 'Only JPG and PNG files are allowed.'];
-    }
-    
-    // Validate file size
-    if ($file['size'] > $maxSize) {
-        return ['success' => false, 'message' => 'File size must be less than 2MB.'];
-    }
-    
-    // Generate unique filename
-    $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-    $filename = 'banner_' . time() . '_' . rand(1000, 9999) . '.' . $extension;
-    $targetPath = $uploadDir . $filename;
-    
-    // Create directory if it doesn't exist
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
-    }
-    
-    // Move uploaded file
-    if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-        return ['success' => true, 'filename' => $filename];
-    } else {
-        return ['success' => false, 'message' => 'Failed to upload file.'];
     }
 }
 
 // Get all banners for display and auto-deactivate expired events
 $today = date('Y-m-d');
 
-// First, automatically deactivate expired events
-$conn->query("UPDATE banners SET active = 0 WHERE event_end_date < '$today' AND active = 1");
+// First, automatically deactivate expired events using centralized update function
+update("UPDATE banners SET active = 0 WHERE event_end_date < '$today' AND active = 1");
 
-// Then get all banners for display
-$result = $conn->query("SELECT *, 
-    CASE 
-        WHEN event_end_date < '$today' THEN 'expired'
-        WHEN event_start_date <= '$today' AND event_end_date >= '$today' THEN 'active'
-        WHEN event_start_date > '$today' THEN 'upcoming'
-        ELSE 'unknown'
-    END as event_status
-    FROM banners ORDER BY date_uploaded DESC");
-$banners = [];
-while ($row = $result->fetch_assoc()) {
-    $banners[] = $row;
+// Then get all banners for display using centralized fetch function
+$banners = fetch('banners', '', 'date_uploaded DESC');
+
+// Add event status to each banner
+foreach ($banners as &$banner) {
+    if ($banner['event_end_date'] < $today) {
+        $banner['event_status'] = 'expired';
+    } elseif ($banner['event_start_date'] <= $today && $banner['event_end_date'] >= $today) {
+        $banner['event_status'] = 'active';
+    } elseif ($banner['event_start_date'] > $today) {
+        $banner['event_status'] = 'upcoming';
+    } else {
+        $banner['event_status'] = 'unknown';
+    }
 }
+unset($banner); // Break the reference
 ?>
 
 <!DOCTYPE html>

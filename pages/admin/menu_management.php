@@ -1,5 +1,4 @@
 <?php
-require_once '../../config/db_connect.php';
 require_once '../../config/db_model.php';
 
 // Handle form submissions
@@ -59,42 +58,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     'is_best_seller' => $isBestSeller
                 ];
                 
-                // Handle file upload if new image provided
-                if (isset($_FILES['menu_image']) && $_FILES['menu_image']['error'] == 0) {
-                    // Get old image to delete it if extension changed
-                    $oldItemData = fetch('menu', "menu_id = $menuId");
-                    $oldItem = !empty($oldItemData) ? $oldItemData[0] : null;
-                    
-                    $extension = strtolower(pathinfo($_FILES['menu_image']['name'], PATHINFO_EXTENSION));
-                    $newFilename = $menuId . '.' . $extension;
-                    
-                    // Validate file type
-                    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-                    $fileType = $_FILES['menu_image']['type'];
-                    if (in_array($fileType, $allowedTypes)) {
-                        // Create directory if it doesn't exist
-                        if (!is_dir('../../uploads/menu/')) {
-                            mkdir('../../uploads/menu/', 0755, true);
-                        }
-                        
-                        // Delete old image if it has different extension
-                        if ($oldItem && $oldItem['image_path'] && $oldItem['image_path'] !== $newFilename) {
-                            $oldImagePath = "../../uploads/menu/" . $oldItem['image_path'];
-                            if (file_exists($oldImagePath)) {
-                                unlink($oldImagePath);
-                            }
-                        }
-                        
-                        // Move uploaded file
-                        if (move_uploaded_file($_FILES['menu_image']['tmp_name'], '../../uploads/menu/' . $newFilename)) {
-                            // Add image path to update data
-                            $updateData['image_path'] = $newFilename;
-                        }
-                    }
-                }
-                
-                // Update menu item using generic update function
-                if (update('menu', $updateData, "menu_id = $menuId")) {
+                // Update menu item using generic update function with file handling
+                if (update('menu', $updateData, "menu_id = $menuId", 'menu_image', '../../uploads/menu/', $menuId)) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Menu item updated successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to update menu item.", "error");
