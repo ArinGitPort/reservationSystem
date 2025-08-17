@@ -27,32 +27,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $name = $_POST['name'];
                 $price = $_POST['price'];
                 $isBestSeller = isset($_POST['is_best_seller']) ? 1 : 0;
-                $imagePath = '';
-
-                // Insert first to get the ID
-                $stmt = $conn->prepare("INSERT INTO menu (name, price, image_path, is_best_seller) VALUES (?, ?, '', ?)");
-                $stmt->bind_param("sdi", $name, $price, $isBestSeller);
-                if ($stmt->execute()) {
-                    $menuId = $stmt->insert_id;
-                    $stmt->close();
-
-                    // Handle file upload and rename to menu_id.ext
-                    if (isset($_FILES['menu_image']) && $_FILES['menu_image']['error'] == 0) {
-                        $uploadResult = uploadMenuImageWithId($_FILES['menu_image'], $menuId);
-                        if ($uploadResult['success']) {
-                            $imagePath = $uploadResult['filename'];
-                            // Update menu row with image filename
-                            $stmt2 = $conn->prepare("UPDATE menu SET image_path = ? WHERE menu_id = ?");
-                            $stmt2->bind_param("si", $imagePath, $menuId);
-                            $stmt2->execute();
-                            $stmt2->close();
-                        } else {
-                            // Optionally delete the menu row if image upload fails
-                            $conn->query("DELETE FROM menu WHERE menu_id = $menuId");
-                            redirect_with_message($_SERVER['PHP_SELF'], $uploadResult['message'], "error");
-                            break;
-                        }
-                    }
+                
+                // Prepare data for insertion
+                $menuData = [
+                    'name' => $name,
+                    'price' => $price,
+                    'image_path' => '',
+                    'is_best_seller' => $isBestSeller
+                ];
+                
+                // Insert menu item with automatic image handling
+                $menuId = save('menu', $menuData, 'menu_image', '../../uploads/menu/');
+                
+                if ($menuId) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Menu item added successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to save menu item to database.", "error");
@@ -64,61 +51,67 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $name = $_POST['name'];
                 $price = $_POST['price'];
                 $isBestSeller = isset($_POST['is_best_seller']) ? 1 : 0;
-
+                
+                // Prepare update data
+                $updateData = [
+                    'name' => $name,
+                    'price' => $price,
+                    'is_best_seller' => $isBestSeller
+                ];
+                
                 // Handle file upload if new image provided
                 if (isset($_FILES['menu_image']) && $_FILES['menu_image']['error'] == 0) {
-                    $uploadResult = uploadMenuImageWithId($_FILES['menu_image'], $menuId);
-                    if ($uploadResult['success']) {
-                        // Get old image path to delete it (if extension changed)
-                        $stmt = $conn->prepare("SELECT image_path FROM menu WHERE menu_id = ?");
-                        $stmt->bind_param("i", $menuId);
-                        $stmt->execute();
-                        $result = $stmt->get_result();
-                        $oldItem = $result->fetch_assoc();
-                        $stmt->close();
-                        if ($oldItem && $oldItem['image_path'] && $oldItem['image_path'] !== $uploadResult['filename']) {
+                    // Get old image to delete it if extension changed
+                    $oldItemData = fetch('menu', "menu_id = $menuId");
+                    $oldItem = !empty($oldItemData) ? $oldItemData[0] : null;
+                    
+                    $extension = strtolower(pathinfo($_FILES['menu_image']['name'], PATHINFO_EXTENSION));
+                    $newFilename = $menuId . '.' . $extension;
+                    
+                    // Validate file type
+                    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+                    $fileType = $_FILES['menu_image']['type'];
+                    if (in_array($fileType, $allowedTypes)) {
+                        // Create directory if it doesn't exist
+                        if (!is_dir('../../uploads/menu/')) {
+                            mkdir('../../uploads/menu/', 0755, true);
+                        }
+                        
+                        // Delete old image if it has different extension
+                        if ($oldItem && $oldItem['image_path'] && $oldItem['image_path'] !== $newFilename) {
                             $oldImagePath = "../../uploads/menu/" . $oldItem['image_path'];
                             if (file_exists($oldImagePath)) {
                                 unlink($oldImagePath);
                             }
                         }
-                        // Update with new image
-                        $stmt = $conn->prepare("UPDATE menu SET name = ?, price = ?, image_path = ?, is_best_seller = ? WHERE menu_id = ?");
-                        $stmt->bind_param("sdsii", $name, $price, $uploadResult['filename'], $isBestSeller, $menuId);
-                    } else {
-                        redirect_with_message($_SERVER['PHP_SELF'], $uploadResult['message'], "error");
-                        break;
+                        
+                        // Move uploaded file
+                        if (move_uploaded_file($_FILES['menu_image']['tmp_name'], '../../uploads/menu/' . $newFilename)) {
+                            // Add image path to update data
+                            $updateData['image_path'] = $newFilename;
+                        }
                     }
-                } else {
-                    // Update without new image
-                    $stmt = $conn->prepare("UPDATE menu SET name = ?, price = ?, is_best_seller = ? WHERE menu_id = ?");
-                    $stmt->bind_param("sdii", $name, $price, $isBestSeller, $menuId);
                 }
-
-                if ($stmt->execute()) {
+                
+                // Update menu item using generic update function
+                if (update('menu', $updateData, "menu_id = $menuId")) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Menu item updated successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to update menu item.", "error");
                 }
-                $stmt->close();
                 break;
                 
             case 'delete_menu_item':
                 $menuId = $_POST['menu_id'];
-                // Get image filename from DB
-                $stmt = $conn->prepare("SELECT image_path FROM menu WHERE menu_id = ?");
-                $stmt->bind_param("i", $menuId);
-                $stmt->execute();
-                $result = $stmt->get_result();
-                $row = $result->fetch_assoc();
-                $stmt->close();
-                $imagePath = $row ? $row['image_path'] : '';
-
-                // Delete from database
-                $stmt = $conn->prepare("DELETE FROM menu WHERE menu_id = ?");
-                $stmt->bind_param("i", $menuId);
-                if ($stmt->execute()) {
-                    // Delete image file if exists
+                
+                // Get image filename from DB using generic fetch function
+                $itemData = fetch('menu', "menu_id = $menuId");
+                $item = !empty($itemData) ? $itemData[0] : null;
+                $imagePath = $item ? $item['image_path'] : '';
+                
+                // Delete from database using generic delete function
+                if (delete('menu', $menuId, 'menu_id')) {
+                    // Delete image file if exists using simple unlink
                     if ($imagePath) {
                         $filePath = "../../uploads/menu/" . $imagePath;
                         if (file_exists($filePath)) {
@@ -129,61 +122,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete menu item.", "error");
                 }
-                $stmt->close();
                 break;
         }
     }
 }
 
-
-/**
- * Upload menu image and rename to menu_id.ext
- */
-function uploadMenuImageWithId($file, $menuId) {
-    $uploadDir = "../../uploads/menu/";
-    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-    $maxSize = 2 * 1024 * 1024; // 2MB
-
-    // Validate file type
-    $fileType = $file['type'];
-    if (!in_array($fileType, $allowedTypes)) {
-        return ['success' => false, 'message' => 'Only JPG and PNG files are allowed.'];
-    }
-
-    // Validate file size
-    if ($file['size'] > $maxSize) {
-        return ['success' => false, 'message' => 'File size must be less than 2MB.'];
-    }
-
-    // Use menu_id as filename
-    $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $filename = $menuId . '.' . $extension;
-    $targetPath = $uploadDir . $filename;
-
-    // Create directory if it doesn't exist
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
-    }
-
-    // Remove any existing file with same name (for updates)
-    if (file_exists($targetPath)) {
-        unlink($targetPath);
-    }
-
-    // Move uploaded file
-    if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-        return ['success' => true, 'filename' => $filename];
-    } else {
-        return ['success' => false, 'message' => 'Failed to upload file.'];
-    }
-}
-
-// Get all menu items for display
-$result = $conn->query("SELECT * FROM menu ORDER BY menu_id ASC");
-$menuItems = [];
-while ($row = $result->fetch_assoc()) {
-    $menuItems[] = $row;
-}
+// Get all menu items for display using generic fetch function
+$menuItems = fetch('menu', '', 'menu_id ASC');
 ?>
 
 <!DOCTYPE html>

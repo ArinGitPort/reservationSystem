@@ -27,8 +27,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $email = $_POST['email'];
                 $phone = $_POST['phone'];
                 
-                $newCustomer = "INSERT INTO customers (first_name, last_name, email, phone) VALUES ('$firstName', '$lastName', '$email', '$phone')";
-                $customerId = save($newCustomer);
+                // Prepare data for insertion using generic save function
+                $customerData = [
+                    'first_name' => $firstName,
+                    'last_name' => $lastName,
+                    'email' => $email,
+                    'phone' => $phone,
+                    'image_path' => ''
+                ];
+                
+                // Insert customer with automatic image handling using your enhanced save function
+                $customerId = save('customers', $customerData, 'profile_image', '../../uploads/profiles/');
+                
                 if ($customerId) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Customer added successfully!", "success");
                 } else {
@@ -43,8 +53,50 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $email = $_POST['email'];
                 $phone = $_POST['phone'];
                 
-                $updateCustomer = "UPDATE customers SET first_name = '$firstName', last_name = '$lastName', email = '$email', phone = '$phone' WHERE id = $id";
-                if (update($updateCustomer)) {
+                // Prepare update data using generic update function
+                $updateData = [
+                    'first_name' => $firstName,
+                    'last_name' => $lastName,
+                    'email' => $email,
+                    'phone' => $phone
+                ];
+                
+                // Handle profile image upload if provided
+                if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] == 0) {
+                    // Get old image to delete it if extension changed
+                    $oldCustomerData = fetch('customers', "id = $id");
+                    $oldCustomer = !empty($oldCustomerData) ? $oldCustomerData[0] : null;
+                    
+                    $extension = strtolower(pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION));
+                    $newFilename = $id . '.' . $extension;
+                    
+                    // Validate file type
+                    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+                    $fileType = $_FILES['profile_image']['type'];
+                    if (in_array($fileType, $allowedTypes)) {
+                        // Create directory if it doesn't exist
+                        if (!is_dir('../../uploads/profiles/')) {
+                            mkdir('../../uploads/profiles/', 0755, true);
+                        }
+                        
+                        // Delete old image if it has different extension
+                        if ($oldCustomer && $oldCustomer['image_path'] && $oldCustomer['image_path'] !== $newFilename) {
+                            $oldImagePath = "../../uploads/profiles/" . $oldCustomer['image_path'];
+                            if (file_exists($oldImagePath)) {
+                                unlink($oldImagePath);
+                            }
+                        }
+                        
+                        // Move uploaded file
+                        if (move_uploaded_file($_FILES['profile_image']['tmp_name'], '../../uploads/profiles/' . $newFilename)) {
+                            // Add image path to update data
+                            $updateData['image_path'] = $newFilename;
+                        }
+                    }
+                }
+                
+                // Update customer using generic update function
+                if (update('customers', $updateData, "id = $id")) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Customer updated successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to update customer.", "error");
@@ -53,7 +105,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
             case 'delete_customer':
                 $id = $_POST['customer_id'];
+                
+                // Get image filename from DB using generic fetch function
+                $customerData = fetch('customers', "id = $id");
+                $customer = !empty($customerData) ? $customerData[0] : null;
+                $imagePath = $customer ? $customer['image_path'] : '';
+                
+                // Delete from database using generic delete function
                 if (delete("customers", $id)) {
+                    // Delete profile image file if exists
+                    if ($imagePath) {
+                        $filePath = "../../uploads/profiles/" . $imagePath;
+                        if (file_exists($filePath)) {
+                            unlink($filePath);
+                        }
+                    }
                     redirect_with_message($_SERVER['PHP_SELF'], "Customer deleted successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete customer.", "error");
@@ -63,8 +129,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Get all customers for display
-$customers = selectAll("SELECT * FROM customers ORDER BY created_at DESC");
+// Get all customers for display using generic fetch function
+$customers = fetch('customers', '', 'created_at DESC');
 ?>
 
 <!DOCTYPE html>
@@ -112,6 +178,7 @@ $customers = selectAll("SELECT * FROM customers ORDER BY created_at DESC");
                 <thead>
                     <tr>
                         <th>#</th>
+                        <th>PROFILE</th>
                         <th>NAME</th>
                         <th>EMAIL</th>
                         <th>PHONE</th>
@@ -123,6 +190,17 @@ $customers = selectAll("SELECT * FROM customers ORDER BY created_at DESC");
                     <?php foreach ($customers as $index => $customer): ?>
                     <tr>
                         <td><?php echo $index + 1; ?></td>
+                        <td>
+                            <?php if ($customer['image_path']): ?>
+                                <img src="../../uploads/profiles/<?php echo htmlspecialchars($customer['image_path']); ?>" 
+                                     alt="<?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?>" 
+                                     style="width: 50px; height: 50px; object-fit: cover; border-radius: 50%;">
+                            <?php else: ?>
+                                <div style="width: 50px; height: 50px; background: #f8f9fa; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-user text-muted"></i>
+                                </div>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <div class="fw-bold"><?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?></div>
                         </td>
@@ -162,7 +240,7 @@ $customers = selectAll("SELECT * FROM customers ORDER BY created_at DESC");
                     <h5 class="modal-title"><i class="fas fa-user-plus me-2"></i>Add New Customer</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST">
+                <form method="POST" enctype="multipart/form-data">
                     <div class="modal-body">
                         <input type="hidden" name="action" value="add_customer">
                         <div class="row">
@@ -187,6 +265,11 @@ $customers = selectAll("SELECT * FROM customers ORDER BY created_at DESC");
                             <label for="phone" class="form-label">Phone</label>
                             <input type="tel" class="form-control" name="phone">
                         </div>
+                        <div class="mb-3">
+                            <label for="profile_image" class="form-label">Profile Image</label>
+                            <input type="file" class="form-control" name="profile_image" accept=".jpg,.jpeg,.png">
+                            <div class="form-text">Accepted formats: JPG, PNG. Max size: 2MB (Optional)</div>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -205,7 +288,7 @@ $customers = selectAll("SELECT * FROM customers ORDER BY created_at DESC");
                     <h5 class="modal-title"><i class="fas fa-user-edit me-2"></i>Edit Customer</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST">
+                <form method="POST" enctype="multipart/form-data">
                     <div class="modal-body">
                         <input type="hidden" name="action" value="update_customer">
                         <input type="hidden" name="customer_id" id="edit_customer_id">
@@ -230,6 +313,11 @@ $customers = selectAll("SELECT * FROM customers ORDER BY created_at DESC");
                         <div class="mb-3">
                             <label for="edit_phone" class="form-label">Phone</label>
                             <input type="tel" class="form-control" name="phone" id="edit_phone">
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_profile_image" class="form-label">Profile Image</label>
+                            <input type="file" class="form-control" name="profile_image" accept=".jpg,.jpeg,.png">
+                            <div class="form-text">Leave empty to keep current image. Accepted formats: JPG, PNG. Max size: 2MB</div>
                         </div>
                     </div>
                     <div class="modal-footer">

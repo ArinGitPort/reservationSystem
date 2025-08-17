@@ -29,8 +29,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $tableNumber = $_POST['table_number'];
                 $specialRequests = $_POST['special_requests'];
                 
-                $newReservation = "INSERT INTO reservations (customer_id, reservation_date, reservation_time, party_size, table_number, special_requests) VALUES ($customerId, '$reservationDate', '$reservationTime', $partySize, $tableNumber, '$specialRequests')";
-                $reservationId = save($newReservation);
+                // Use generic save function with data array
+                $reservationData = [
+                    'customer_id' => $customerId,
+                    'reservation_date' => $reservationDate,
+                    'reservation_time' => $reservationTime,
+                    'party_size' => $partySize,
+                    'table_number' => $tableNumber,
+                    'special_requests' => $specialRequests
+                ];
+                
+                $reservationId = save('reservations', $reservationData);
                 if ($reservationId) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Reservation added successfully!", "success");
                 } else {
@@ -42,8 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $id = $_POST['reservation_id'];
                 $status = $_POST['status'];
                 
-                $updateReservationStatus = "UPDATE reservations SET status = '$status' WHERE id = $id";
-                if (update($updateReservationStatus)) {
+                // Use generic update function with data array
+                $updateData = ['status' => $status];
+                if (update('reservations', $updateData, "id = $id")) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Reservation status updated successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to update reservation status.", "error");
@@ -63,8 +73,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // Get all customers and reservations for display
-$customers = selectAll("SELECT * FROM customers ORDER BY created_at DESC");
-$reservations = selectAll("SELECT r.*, c.first_name, c.last_name, c.email FROM reservations r JOIN customers c ON r.customer_id = c.id ORDER BY r.reservation_date DESC, r.reservation_time DESC");
+$customers = fetch('customers', '', 'created_at DESC');
+// For complex joins, we'll use direct mysqli_query since fetch() is for single table queries
+global $connection;
+$reservationQuery = "SELECT r.*, c.first_name, c.last_name, c.email FROM reservations r JOIN customers c ON r.customer_id = c.id ORDER BY r.reservation_date DESC, r.reservation_time DESC";
+$result = mysqli_query($connection, $reservationQuery);
+$reservations = [];
+while ($row = mysqli_fetch_assoc($result)) {
+    $reservations[] = $row;
+}
 ?>
 
 <!DOCTYPE html>
@@ -262,31 +279,7 @@ $reservations = selectAll("SELECT r.*, c.first_name, c.last_name, c.email FROM r
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
-    <script>
-        function confirmDelete(type, id) {
-            document.getElementById('deleteReservationId').value = id;
-        }
-        
-        function updateStatus(reservationId, status) {
-            document.getElementById('status_reservation_id').value = reservationId;
-            document.getElementById('status_value').value = status;
-            document.getElementById('statusUpdateForm').submit();
-        }
-        
-        function toggleSidebar() {
-            document.querySelector('.sidebar').classList.toggle('show');
-        }
-        
-        // Auto-dismiss alerts after 5 seconds
-        document.addEventListener('DOMContentLoaded', function() {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(function(alert) {
-                setTimeout(function() {
-                    const bsAlert = new bootstrap.Alert(alert);
-                    bsAlert.close();
-                }, 5000); // 5 seconds
-            });
-        });
-    </script>
+    <!-- Reservation Management JavaScript -->
+    <script src="../../assets/js/reservation_management.js"></script>
 </body>
 </html>
