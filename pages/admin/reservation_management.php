@@ -139,43 +139,16 @@ while ($row = mysqli_fetch_assoc($result)) {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($reservations as $index => $reservation): ?>
-                    <tr>
-                        <td><?php echo $index + 1; ?></td>
-                        <td>
-                            <div class="fw-bold"><?php echo htmlspecialchars($reservation['first_name'] . ' ' . $reservation['last_name']); ?></div>
-                            <small class="text-muted"><?php echo htmlspecialchars($reservation['email']); ?></small>
-                        </td>
-                        <td><?php echo date('d M Y', strtotime($reservation['reservation_date'])); ?></td>
-                        <td><?php echo date('g:i A', strtotime($reservation['reservation_time'])); ?></td>
-                        <td><?php echo $reservation['party_size']; ?></td>
-                        <td><?php echo $reservation['table_number'] ?: 'TBD'; ?></td>
-                        <td>
-                            <span class="status-badge status-<?php echo $reservation['status']; ?>">
-                                <?php echo ucfirst($reservation['status']); ?>
-                            </span>
-                        </td>
-                        <td>
-                            <div class="action-buttons">
-                                <div class="dropdown">
-                                    <button class="btn btn-sm btn-outline-dark dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                        <i class="fas fa-cog"></i>
-                                    </button>
-                                    <ul class="dropdown-menu">
-                                        <li><a class="dropdown-item" href="#" onclick="updateStatus(<?php echo $reservation['id']; ?>, 'pending')">Set Pending</a></li>
-                                        <li><a class="dropdown-item" href="#" onclick="updateStatus(<?php echo $reservation['id']; ?>, 'confirmed')">Set Confirmed</a></li>
-                                        <li><a class="dropdown-item" href="#" onclick="updateStatus(<?php echo $reservation['id']; ?>, 'cancelled')">Set Cancelled</a></li>
-                                    </ul>
-                                </div>
-                                <button class="btn btn-sm btn-outline-danger" 
-                                        onclick="confirmDelete('reservation', <?php echo $reservation['id']; ?>)"
-                                        data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
+                    <?php
+                    // Using display_all function with table format for reservations
+                    $sql = "SELECT r.id, c.first_name, c.last_name, c.email, r.reservation_date, r.reservation_time, 
+                                   r.party_size, r.table_number, r.status
+                            FROM reservations r 
+                            JOIN customers c ON r.customer_id = c.id 
+                            ORDER BY r.reservation_date DESC, r.reservation_time DESC";
+                    $column_mappings = []; // Not used for reservation_management special handling
+                    display_all($sql, $column_mappings, 'reservation_management.php', 'table');
+                    ?>
                 </tbody>
             </table>
         </div>

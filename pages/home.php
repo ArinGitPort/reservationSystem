@@ -1,19 +1,15 @@
 <?php 
 include '../includes/header.php'; 
-require_once '../config/db_connect.php';
+require_once '../config/db_model.php';
 
 // Get active banners for carousel and auto-deactivate expired events
 $today = date('Y-m-d');
 
-// First, automatically deactivate expired events
-$conn->query("UPDATE banners SET active = 0 WHERE event_end_date < '$today' AND active = 1");
+// First, automatically deactivate expired events using enhanced update function
+update('banners', ['active' => 0], "event_end_date < '{$today}' AND active = 1");
 
-// Get active banners that are currently running or upcoming
-$result = $conn->query("SELECT * FROM banners WHERE active = 1 AND (event_end_date >= '$today' OR event_end_date IS NULL) ORDER BY event_start_date ASC, date_uploaded DESC");
-$activeBanners = [];
-while ($row = $result->fetch_assoc()) {
-    $activeBanners[] = $row;
-}
+// Get active banners that are currently running or upcoming using enhanced fetch function
+$activeBanners = fetch('banners', "active = 1 AND (event_end_date >= '{$today}' OR event_end_date IS NULL)", "event_start_date ASC, date_uploaded DESC");
 ?>
 <!DOCTYPE html>
 <html lang="en">

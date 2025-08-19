@@ -106,12 +106,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             case 'delete_customer':
                 $id = $_POST['customer_id'];
                 
-                // Get image filename from DB using generic fetch function
+                // Get image filename from DB using fetch function
                 $customerData = fetch('customers', "id = $id");
                 $customer = !empty($customerData) ? $customerData[0] : null;
                 $imagePath = $customer ? $customer['image_path'] : '';
                 
-                // Delete from database using generic delete function
+                // Delete from database using  delete function
                 if (delete("customers", $id)) {
                     // Delete profile image file if exists
                     if ($imagePath) {
@@ -129,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Get all customers for display using generic fetch function
+// Get all customers for display using fetch function
 $customers = fetch('customers', '', 'created_at DESC');
 ?>
 
@@ -187,45 +187,12 @@ $customers = fetch('customers', '', 'created_at DESC');
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($customers as $index => $customer): ?>
-                    <tr>
-                        <td><?php echo $index + 1; ?></td>
-                        <td>
-                            <?php if ($customer['image_path']): ?>
-                                <img src="../../uploads/profiles/<?php echo htmlspecialchars($customer['image_path']); ?>" 
-                                     alt="<?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?>" 
-                                     style="width: 50px; height: 50px; object-fit: cover; border-radius: 50%;">
-                            <?php else: ?>
-                                <div style="width: 50px; height: 50px; background: #f8f9fa; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                                    <i class="fas fa-user text-muted"></i>
-                                </div>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <div class="fw-bold"><?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?></div>
-                        </td>
-                        <td><?php echo htmlspecialchars($customer['email']); ?></td>
-                        <td><?php echo htmlspecialchars($customer['phone'] ?: 'N/A'); ?></td>
-                        <td>
-                            <div><?php echo date('d M Y', strtotime($customer['created_at'])); ?></div>
-                            <small class="text-muted"><?php echo date('h:i A', strtotime($customer['created_at'])); ?></small>
-                        </td>
-                        <td>
-                            <div class="action-buttons">
-                                <button class="btn btn-sm btn-outline-dark" 
-                                        onclick="editCustomer(<?php echo $customer['id']; ?>, '<?php echo htmlspecialchars($customer['first_name']); ?>', '<?php echo htmlspecialchars($customer['last_name']); ?>', '<?php echo htmlspecialchars($customer['email']); ?>', '<?php echo htmlspecialchars($customer['phone']); ?>')"
-                                        data-bs-toggle="modal" data-bs-target="#editCustomerModal">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button class="btn btn-sm btn-outline-danger" 
-                                        onclick="confirmDelete('customer', <?php echo $customer['id']; ?>)"
-                                        data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
+                    <?php
+                    // Using display_all function with table format - Professor requirement for function reuse
+                    $sql = "SELECT id, first_name, last_name, email, phone, image_path, created_at FROM customers ORDER BY created_at DESC";
+                    $column_mappings = []; // Not used for account_management special handling
+                    display_all($sql, $column_mappings, 'account_management.php', 'table');
+                    ?>
                 </tbody>
             </table>
         </div>

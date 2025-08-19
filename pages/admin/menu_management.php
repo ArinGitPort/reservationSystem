@@ -127,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Get all menu items for display using generic fetch function
+// Get all menu items for display using fetch function
 $menuItems = fetch('menu', '', 'menu_id ASC');
 ?>
 
@@ -183,51 +183,12 @@ $menuItems = fetch('menu', '', 'menu_id ASC');
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($menuItems as $index => $item): ?>
-                <tr>
-                    <td><?php echo $index + 1; ?></td>
-                    <td>
-                        <?php if ($item['image_path']): ?>
-                            <img src="../../uploads/menu/<?php echo htmlspecialchars($item['image_path']); ?>" 
-                                 alt="<?php echo htmlspecialchars($item['name']); ?>" 
-                                 style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px;">
-                        <?php else: ?>
-                            <div style="width: 60px; height: 60px; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-                                <i class="fas fa-image text-muted"></i>
-                            </div>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <div class="fw-bold"><?php echo htmlspecialchars($item['name']); ?></div>
-                    </td>
-                    <td>
-                        <span class="fw-bold text-primary">₱<?php echo number_format($item['price'], 2); ?></span>
-                    </td>
-                    <td>
-                        <?php if ($item['is_best_seller']): ?>
-                            <span class="badge bg-warning text-dark">
-                                <i class="fas fa-star me-1"></i>Best Seller
-                            </span>
-                        <?php else: ?>
-                            <span class="badge bg-light text-dark">Regular</span>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <div class="action-buttons">
-                            <button class="btn btn-sm btn-outline-primary" 
-                                    onclick="editMenuItem(<?php echo htmlspecialchars(json_encode($item)); ?>)"
-                                    data-bs-toggle="modal" data-bs-target="#editMenuModal">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" 
-                                    onclick="confirmDelete('<?php echo $item['menu_id']; ?>', '<?php echo htmlspecialchars($item['image_path']); ?>')"
-                                    data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
+                <?php
+                // Using display_all function with table format for menu items
+                $sql = "SELECT menu_id, name, price, image_path, is_best_seller FROM menu ORDER BY name ASC";
+                $column_mappings = []; // Not used for menu_management special handling
+                display_all($sql, $column_mappings, 'menu_management.php', 'table');
+                ?>
             </tbody>
         </table>
     </div>
