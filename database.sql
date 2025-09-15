@@ -30,6 +30,7 @@ CREATE TABLE banners (
     filename VARCHAR(255) NOT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT NULL,
+    event_date DATE NULL,
     event_start_date DATE NULL,
     event_end_date DATE NULL,
     active BOOLEAN DEFAULT 1,
