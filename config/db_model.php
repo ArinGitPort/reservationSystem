@@ -246,17 +246,25 @@ function display_all($sql, $column_mappings, $url, $format = 'simple') {
                     $bannerId = $row['banner_id'];
                     $output_list .= "<td>";
                     $output_list .= "<div class='action-buttons'>";
+                    
+                    // Create JSON data for edit functionality using data attribute
+                    $bannerJson = htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8');
+                    $output_list .= "<button class='btn btn-sm btn-outline-primary edit-banner-btn' 
+                                data-banner='$bannerJson'
+                                data-bs-toggle='modal' data-bs-target='#editBannerModal' title='Edit Banner'>
+                            <i class='fas fa-edit'></i>
+                          </button>";
                     $output_list .= "<form method='POST' style='display: inline;'>";
                     $output_list .= "<input type='hidden' name='action' value='toggle_banner'>";
                     $output_list .= "<input type='hidden' name='banner_id' value='$bannerId'>";
                     $output_list .= "<input type='hidden' name='current_status' value='" . $row['active'] . "'>";
-                    $output_list .= "<button type='submit' class='btn btn-sm btn-outline-primary' title='Toggle Status'>";
+                    $output_list .= "<button type='submit' class='btn btn-sm btn-outline-secondary' title='Toggle Status'>";
                     $output_list .= "<i class='fas fa-" . ($row['active'] ? 'eye-slash' : 'eye') . "'></i>";
                     $output_list .= "</button>";
                     $output_list .= "</form>";
                     $output_list .= "<button class='btn btn-sm btn-outline-danger' 
                                 onclick=\"confirmDelete('$bannerId', '" . htmlspecialchars($row['filename']) . "')\"
-                                data-bs-toggle='modal' data-bs-target='#confirmDeleteModal'>
+                                data-bs-toggle='modal' data-bs-target='#confirmDeleteModal' title='Delete Banner'>
                             <i class='fas fa-trash'></i>
                           </button>";
                     $output_list .= "</div>";
@@ -321,6 +329,33 @@ function display_all($sql, $column_mappings, $url, $format = 'simple') {
 function save($tableOrSql, $data = null, $fileField = null, $uploadDir = null, $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png']) {
     global $connection;
     
+    // Auto-determine upload directory based on table name if not provided
+    if ($fileField && $uploadDir === null) {
+        $tableName = '';
+        if ($data === null) {
+            // Extract table name from SQL query
+            preg_match('/INSERT INTO (\w+)/', $tableOrSql, $matches);
+            $tableName = $matches[1] ?? '';
+        } else {
+            // Table name is the first parameter
+            $tableName = $tableOrSql;
+        }
+        
+        // Automatic directory generation  table name mapping
+        $directoryName = $tableName;
+        
+        // Auto-generate upload directory path
+        $uploadDir = "../../uploads/{$directoryName}/";
+        
+        // Ensure the directory exists - create if it doesn't
+        if (!is_dir($uploadDir)) {
+            if (!mkdir($uploadDir, 0755, true)) {
+                error_log("Failed to create upload directory: $uploadDir");
+                return false;
+            }
+        }
+    }
+    
     if ($data === null) {
         // Old way: raw SQL query
         $result = mysqli_query($connection, $tableOrSql);
@@ -330,35 +365,61 @@ function save($tableOrSql, $data = null, $fileField = null, $uploadDir = null, $
             
             // Handle file upload if specified
             if ($fileField && $uploadDir && isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] == 0) {
+                // Validate file type first
+                $fileType = $_FILES[$fileField]['type'];
+                if (!in_array($fileType, $allowedTypes)) {
+                    error_log("Invalid file type uploaded: $fileType");
+                    return false;
+                }
+                
                 $extension = strtolower(pathinfo($_FILES[$fileField]['name'], PATHINFO_EXTENSION));
                 $newname = "$insertId.$extension";
                 
-                // Create directory if it doesn't exist
+                // Directory should already exist from earlier check, but double-check
                 if (!is_dir($uploadDir)) {
-                    mkdir($uploadDir, 0755, true);
+                    if (!mkdir($uploadDir, 0755, true)) {
+                        error_log("Failed to create upload directory: $uploadDir");
+                        return false;
+                    }
                 }
                 
-                move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname);
-                
-                // Update the record with image path if it's a table-based insert
-                if (strpos($tableOrSql, 'INSERT INTO') !== false) {
-                    // Extract table name from INSERT query
-                    preg_match('/INSERT INTO (\w+)/', $tableOrSql, $matches);
-                    if ($matches[1]) {
-                        $tableName = $matches[1];
-                        
-                        // Determine correct ID column and image column
-                        $idColumn = 'id'; // default
-                        $imageColumn = 'image_path'; // default
-                        if ($tableName === 'menu') {
-                            $idColumn = 'menu_id';
-                        } elseif ($tableName === 'banners') {
-                            $idColumn = 'banner_id';
-                            $imageColumn = 'filename'; // banners table uses 'filename' instead of 'image_path'
+                // Move uploaded file
+                if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname)) {
+                    // Update the record with image path if it's a table-based insert
+                    if (strpos($tableOrSql, 'INSERT INTO') !== false) {
+                        // Extract table name from INSERT query
+                        preg_match('/INSERT INTO (\w+)/', $tableOrSql, $matches);
+                        if ($matches[1]) {
+                            $tableName = $matches[1];
+                            
+                            // Auto-detect primary key column name
+                            $pkQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                       WHERE TABLE_SCHEMA = DATABASE() 
+                                       AND TABLE_NAME = '$tableName' 
+                                       AND COLUMN_KEY = 'PRI'";
+                            $pkResult = mysqli_query($connection, $pkQuery);
+                            $idColumn = 'id'; // fallback default
+                            if ($pkResult && $pkRow = mysqli_fetch_assoc($pkResult)) {
+                                $idColumn = $pkRow['COLUMN_NAME'];
+                            }
+                            
+                            // Auto-detect image column name (filename, image_path, image, etc.)
+                            $imageQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                          WHERE TABLE_SCHEMA = DATABASE() 
+                                          AND TABLE_NAME = '$tableName' 
+                                          AND (COLUMN_NAME LIKE '%image%' OR COLUMN_NAME LIKE '%filename%' OR COLUMN_NAME LIKE '%file%')
+                                          AND DATA_TYPE = 'varchar'";
+                            $imageResult = mysqli_query($connection, $imageQuery);
+                            $imageColumn = 'image_path'; // fallback default
+                            if ($imageResult && $imageRow = mysqli_fetch_assoc($imageResult)) {
+                                $imageColumn = $imageRow['COLUMN_NAME'];
+                            }
+                            
+                            mysqli_query($connection, "UPDATE $tableName SET $imageColumn = '$newname' WHERE $idColumn = $insertId");
                         }
-                        
-                        mysqli_query($connection, "UPDATE $tableName SET $imageColumn = '$newname' WHERE $idColumn = $insertId");
                     }
+                } else {
+                    error_log("Failed to move uploaded file to: " . $uploadDir . $newname);
                 }
             }
             
@@ -402,34 +463,56 @@ function save($tableOrSql, $data = null, $fileField = null, $uploadDir = null, $
             
             // Handle file upload if specified
             if ($fileField && $uploadDir && isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] == 0) {
-                // Validate file type
+                // Validate file type first
                 $fileType = $_FILES[$fileField]['type'];
                 if (in_array($fileType, $allowedTypes)) {
                     $extension = strtolower(pathinfo($_FILES[$fileField]['name'], PATHINFO_EXTENSION));
                     $newname = "$insertId.$extension";
                     
-                    // Create directory if it doesn't exist
+                    // Directory should already exist from earlier check, but double-check
                     if (!is_dir($uploadDir)) {
-                        mkdir($uploadDir, 0755, true);
+                        if (!mkdir($uploadDir, 0755, true)) {
+                            error_log("Failed to create upload directory: $uploadDir");
+                            mysqli_stmt_close($stmt);
+                            return false;
+                        }
                     }
                     
-                    move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname);
-                    
-                    // Update the record with image path - determine correct ID column and image column
-                    $idColumn = 'id'; // default
-                    $imageColumn = 'image_path'; // default
-                    if ($table === 'menu') {
-                        $idColumn = 'menu_id';
-                    } elseif ($table === 'banners') {
-                        $idColumn = 'banner_id';
-                        $imageColumn = 'filename'; // banners table uses 'filename' instead of 'image_path'
+                    // Move uploaded file
+                    if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname)) {
+                        // Auto-detect primary key column name
+                        $pkQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                   WHERE TABLE_SCHEMA = DATABASE() 
+                                   AND TABLE_NAME = '$table' 
+                                   AND COLUMN_KEY = 'PRI'";
+                        $pkResult = mysqli_query($connection, $pkQuery);
+                        $idColumn = 'id'; // fallback default
+                        if ($pkResult && $pkRow = mysqli_fetch_assoc($pkResult)) {
+                            $idColumn = $pkRow['COLUMN_NAME'];
+                        }
+                        
+                        // Auto-detect image column name (filename, image_path, image, etc.)
+                        $imageQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                      WHERE TABLE_SCHEMA = DATABASE() 
+                                      AND TABLE_NAME = '$table' 
+                                      AND (COLUMN_NAME LIKE '%image%' OR COLUMN_NAME LIKE '%filename%' OR COLUMN_NAME LIKE '%file%')
+                                      AND DATA_TYPE = 'varchar'";
+                        $imageResult = mysqli_query($connection, $imageQuery);
+                        $imageColumn = 'image_path'; // fallback default
+                        if ($imageResult && $imageRow = mysqli_fetch_assoc($imageResult)) {
+                            $imageColumn = $imageRow['COLUMN_NAME'];
+                        }
+                        
+                        $updateSql = "UPDATE {$table} SET {$imageColumn} = ? WHERE {$idColumn} = ?";
+                        $updateStmt = mysqli_prepare($connection, $updateSql);
+                        mysqli_stmt_bind_param($updateStmt, 'si', $newname, $insertId);
+                        mysqli_stmt_execute($updateStmt);
+                        mysqli_stmt_close($updateStmt);
+                    } else {
+                        error_log("Failed to move uploaded file to: " . $uploadDir . $newname);
                     }
-                    
-                    $updateSql = "UPDATE {$table} SET {$imageColumn} = ? WHERE {$idColumn} = ?";
-                    $updateStmt = mysqli_prepare($connection, $updateSql);
-                    mysqli_stmt_bind_param($updateStmt, 'si', $newname, $insertId);
-                    mysqli_stmt_execute($updateStmt);
-                    mysqli_stmt_close($updateStmt);
+                } else {
+                    error_log("Invalid file type for upload: $fileType");
                 }
             }
             

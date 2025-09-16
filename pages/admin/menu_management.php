@@ -2,6 +2,16 @@
 require_once '../../config/db_connect.php';
 require_once '../../config/db_model.php';
 
+// ===== CONFIGURATION VARIABLES (Top of file for clean management) =====
+// SQL Queries
+$menuQuery = "SELECT menu_id, name, price, image_path, is_best_seller FROM menu ORDER BY name ASC";
+$columnMappings = []; // Not used for menu_management special handling
+
+// Save function parameters
+$menuTable = 'menu';
+$menuImageField = 'menu_image';
+// Upload directory auto-detected by save() function based on table name
+
 // Handle form submissions
 $message = '';
 $messageType = '';
@@ -37,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 ];
                 
                 // Insert menu item with automatic image handling
-                $menuId = save('menu', $menuData, 'menu_image', '../../uploads/menu/');
+                $menuId = save($menuTable, $menuData, $menuImageField);
                 
                 if ($menuId) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Menu item added successfully!", "success");
@@ -184,10 +194,8 @@ $menuItems = fetch('menu', '', 'menu_id ASC');
             </thead>
             <tbody>
                 <?php
-                // Using display_all function with table format for menu items
-                $sql = "SELECT menu_id, name, price, image_path, is_best_seller FROM menu ORDER BY name ASC";
-                $column_mappings = []; // Not used for menu_management special handling
-                display_all($sql, $column_mappings, 'menu_management.php', 'table');
+                // Using clean variables defined at top of file
+                display_all($menuQuery, $columnMappings, 'menu_management.php', 'table');
                 ?>
             </tbody>
         </table>

@@ -1,6 +1,18 @@
 <?php
 require_once '../../config/db_model.php';
 
+// ===== CONFIGURATION VARIABLES (Top of file for clean management) =====
+// SQL Queries
+$reservationQuery = "SELECT r.id, c.first_name, c.last_name, c.email, r.reservation_date, r.reservation_time, 
+                           r.party_size, r.table_number, r.status
+                    FROM reservations r 
+                    JOIN customers c ON r.customer_id = c.id 
+                    ORDER BY r.reservation_date DESC, r.reservation_time DESC";
+$columnMappings = []; // Not used for reservation_management special handling
+
+// Save function parameters
+$reservationTable = 'reservations';
+
 // Handle form submissions
 $message = '';
 $messageType = '';
@@ -39,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     'special_requests' => $specialRequests
                 ];
                 
-                $reservationId = save('reservations', $reservationData);
+                $reservationId = save($reservationTable, $reservationData);
                 if ($reservationId) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Reservation added successfully!", "success");
                 } else {
@@ -140,14 +152,8 @@ while ($row = mysqli_fetch_assoc($result)) {
                 </thead>
                 <tbody>
                     <?php
-                    // Using display_all function with table format for reservations
-                    $sql = "SELECT r.id, c.first_name, c.last_name, c.email, r.reservation_date, r.reservation_time, 
-                                   r.party_size, r.table_number, r.status
-                            FROM reservations r 
-                            JOIN customers c ON r.customer_id = c.id 
-                            ORDER BY r.reservation_date DESC, r.reservation_time DESC";
-                    $column_mappings = []; // Not used for reservation_management special handling
-                    display_all($sql, $column_mappings, 'reservation_management.php', 'table');
+                    // Using clean variables defined at top of file
+                    display_all($reservationQuery, $columnMappings, 'reservation_management.php', 'table');
                     ?>
                 </tbody>
             </table>

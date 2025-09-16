@@ -2,6 +2,17 @@
 require_once '../../config/db_connect.php';
 require_once '../../config/db_model.php';
 
+// ===== CONFIGURATION VARIABLES (Top of file for clean management) =====
+// SQL Queries
+$bannerQuery = "SELECT banner_id, title, description, event_start_date, event_end_date, event_date, 
+                       active, date_uploaded, filename
+                FROM banners ORDER BY date_uploaded DESC";
+$columnMappings = []; // Not used for event_display_management special handling
+
+// Save function parameters
+$bannerTable = 'banners';
+$bannerImageField = 'banner_image';
+
 // Handle form submissions
 $message = '';
 $messageType = '';
@@ -45,8 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     'filename' => ''
                 ];
                 
-                // Insert banner with automatic image handling using enhanced save function
-                $bannerId = save('banners', $bannerData, 'banner_image', '../../uploads/banners/');
+                // Insert banner with automatic image handling 
+                $bannerId = save($bannerTable, $bannerData, $bannerImageField);
                 
                 if ($bannerId) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Event banner uploaded successfully!", "success");
@@ -86,6 +97,75 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     redirect_with_message($_SERVER['PHP_SELF'], "Banner deleted successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete banner.", "error");
+                }
+                break;
+                
+            case 'edit_banner':
+                $bannerId = $_POST['banner_id'];
+                $title = trim($_POST['title']);
+                $description = trim($_POST['description']);
+                $eventStartDate = $_POST['event_start_date'];
+                $eventEndDate = $_POST['event_end_date'];
+                $active = $_POST['active'];
+                $currentFilename = $_POST['current_filename'];
+                
+                // Validate required fields
+                if (empty($title)) {
+                    redirect_with_message($_SERVER['PHP_SELF'], "Event title is required!", "error");
+                    break;
+                }
+                
+                // Prepare update data
+                $updateData = [
+                    'title' => $title,
+                    'description' => $description,
+                    'event_start_date' => $eventStartDate ?: null,
+                    'event_end_date' => $eventEndDate ?: null,
+                    'active' => $active
+                ];
+                
+                // Handle image upload if new image is provided
+                $newFilename = $currentFilename; // Keep current filename by default
+                if (isset($_FILES['banner_image']) && $_FILES['banner_image']['error'] == 0) {
+                    $uploadDir = "../../uploads/banners/";
+                    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+                    
+                    // Validate file type
+                    if (in_array($_FILES['banner_image']['type'], $allowedTypes)) {
+                        $extension = strtolower(pathinfo($_FILES['banner_image']['name'], PATHINFO_EXTENSION));
+                        $newFilename = $bannerId . "." . $extension;
+                        
+                        // Create directory if it doesn't exist
+                        if (!is_dir($uploadDir)) {
+                            mkdir($uploadDir, 0755, true);
+                        }
+                        
+                        // Delete old image if it exists and is different from new one
+                        if ($currentFilename && $currentFilename !== $newFilename) {
+                            $oldFilePath = $uploadDir . $currentFilename;
+                            if (file_exists($oldFilePath)) {
+                                unlink($oldFilePath);
+                            }
+                        }
+                        
+                        // Upload new image
+                        if (move_uploaded_file($_FILES['banner_image']['tmp_name'], $uploadDir . $newFilename)) {
+                            $updateData['filename'] = $newFilename;
+                        } else {
+                            redirect_with_message($_SERVER['PHP_SELF'], "Failed to upload new image.", "error");
+                            break;
+                        }
+                    } else {
+                        redirect_with_message($_SERVER['PHP_SELF'], "Invalid image format. Please use JPG or PNG.", "error");
+                        break;
+                    }
+                }
+                
+                // Update banner in database
+                if (update('banners', $updateData, "banner_id = $bannerId")) {
+                    redirect_with_message($_SERVER['PHP_SELF'], "Banner updated successfully!", "success");
+                } else {
+                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to update banner.", "error");
                 }
                 break;
         }
@@ -179,12 +259,8 @@ while ($row = mysqli_fetch_assoc($result)) {
             </thead>
             <tbody>
                 <?php
-                // Using display_all function with table format for banners
-                $sql = "SELECT banner_id, title, description, event_start_date, event_end_date, event_date, 
-                               active, date_uploaded, filename
-                        FROM banners ORDER BY date_uploaded DESC";
-                $column_mappings = []; // Not used for event_display_management special handling
-                display_all($sql, $column_mappings, 'event_display_management.php', 'table');
+                // Using clean variables defined at top of file
+                display_all($bannerQuery, $columnMappings, 'event_display_management.php', 'table');
                 ?>
             </tbody>
         </table>
@@ -243,6 +319,82 @@ while ($row = mysqli_fetch_assoc($result)) {
         </div>
     </div>
     
+    <!-- Edit Banner Modal -->
+    <div class="modal fade" id="editBannerModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit Event Banner</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="modal-body">
+                        <input type="hidden" name="action" value="edit_banner">
+                        <input type="hidden" name="banner_id" id="editBannerId">
+                        <input type="hidden" name="current_filename" id="editCurrentFilename">
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="editTitle" class="form-label">Event Title *</label>
+                                    <input type="text" class="form-control" name="title" id="editTitle" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="editActive" class="form-label">Status</label>
+                                    <select class="form-select" name="active" id="editActive">
+                                        <option value="1">Active</option>
+                                        <option value="0">Inactive</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="editDescription" class="form-label">Event Description</label>
+                            <textarea class="form-control" name="description" id="editDescription" rows="3" placeholder="Optional event description..."></textarea>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="editEventStartDate" class="form-label">Event Start Date</label>
+                                    <input type="date" class="form-control" name="event_start_date" id="editEventStartDate">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="editEventEndDate" class="form-label">Event End Date</label>
+                                    <input type="date" class="form-control" name="event_end_date" id="editEventEndDate">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="editBannerImage" class="form-label">Replace Banner Image</label>
+                            <input type="file" class="form-control" name="banner_image" id="editBannerImage" accept="image/*">
+                            <div class="form-text">Leave empty to keep current image. Accepted formats: JPG, PNG (Max: 5MB)</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Current Image Preview</label>
+                            <div class="border rounded p-2 bg-light">
+                                <img id="editCurrentImagePreview" src="" alt="Current banner" style="max-width: 200px; max-height: 150px; object-fit: cover;" class="rounded">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Update Banner
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
     <!-- Confirm Delete Modal -->
     <div class="modal fade" id="confirmDeleteModal" tabindex="-1">
         <div class="modal-dialog">
@@ -276,6 +428,41 @@ while ($row = mysqli_fetch_assoc($result)) {
             document.getElementById('deleteFilename').value = filename;
         }
         
+        function editBanner(bannerData) {
+            // Parse the banner data
+            const banner = JSON.parse(bannerData);
+            
+            console.log('Banner data:', banner); // Debug log to see what we're getting
+            
+            // Populate the edit form
+            document.getElementById('editBannerId').value = banner.banner_id;
+            document.getElementById('editCurrentFilename').value = banner.filename;
+            document.getElementById('editTitle').value = banner.title || '';
+            document.getElementById('editDescription').value = banner.description || '';
+            document.getElementById('editActive').value = banner.active;
+            
+            // Handle date fields - convert null/undefined/empty to empty string
+            const startDate = banner.event_start_date;
+            const endDate = banner.event_end_date;
+            
+            // More robust null checking
+            function formatDateForInput(dateValue) {
+                if (!dateValue || dateValue === null || dateValue === 'null' || dateValue === '') {
+                    return '';
+                }
+                // If it's a valid date string, return it as is
+                return dateValue;
+            }
+            
+            document.getElementById('editEventStartDate').value = formatDateForInput(startDate);
+            document.getElementById('editEventEndDate').value = formatDateForInput(endDate);
+            
+            // Set current image preview
+            const currentImagePreview = document.getElementById('editCurrentImagePreview');
+            currentImagePreview.src = '../../uploads/banners/' + banner.filename;
+            currentImagePreview.alt = banner.title || 'Banner image';
+        }
+        
         function toggleSidebar() {
             document.querySelector('.sidebar').classList.toggle('show');
         }
@@ -294,20 +481,38 @@ while ($row = mysqli_fetch_assoc($result)) {
             const today = new Date().toISOString().split('T')[0];
             const startDateInput = document.querySelector('input[name="event_start_date"]');
             const endDateInput = document.querySelector('input[name="event_end_date"]');
+            const editStartDateInput = document.querySelector('#editEventStartDate');
+            const editEndDateInput = document.querySelector('#editEventEndDate');
             
-            if (startDateInput) {
-                startDateInput.setAttribute('min', today);
-                startDateInput.addEventListener('change', function() {
-                    endDateInput.setAttribute('min', this.value);
-                    if (endDateInput.value && endDateInput.value < this.value) {
-                        endDateInput.value = this.value;
-                    }
-                });
+            // Function to set date constraints
+            function setDateConstraints(startInput, endInput) {
+                if (startInput) {
+                    startInput.setAttribute('min', today);
+                    startInput.addEventListener('change', function() {
+                        endInput.setAttribute('min', this.value);
+                        if (endInput.value && endInput.value < this.value) {
+                            endInput.value = this.value;
+                        }
+                    });
+                }
+                
+                if (endInput) {
+                    endInput.setAttribute('min', today);
+                }
             }
             
-            if (endDateInput) {
-                endDateInput.setAttribute('min', today);
-            }
+            // Apply constraints to both add and edit forms
+            setDateConstraints(startDateInput, endDateInput);
+            setDateConstraints(editStartDateInput, editEndDateInput);
+            
+            // Add event listener for edit banner buttons using event delegation
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('.edit-banner-btn')) {
+                    const button = e.target.closest('.edit-banner-btn');
+                    const bannerData = button.getAttribute('data-banner');
+                    editBanner(bannerData);
+                }
+            });
         });
     </script>
 </body>

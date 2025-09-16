@@ -1,6 +1,15 @@
 <?php
 require_once '../../config/db_model.php';
 
+// Save function parameters  
+$customerTable = 'customers';
+$profileImageField = 'profile_image';
+// Upload directory auto-detected by save() function based on table name
+
+// SQL Queries
+$customerQuery = "SELECT id, first_name, last_name, email, phone, image_path, created_at FROM {$customerTable} ORDER BY created_at DESC";
+$columnMappings = []; // Not used for account_management special handling
+
 // Handle form submissions
 $message = '';
 $messageType = '';
@@ -36,8 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     'image_path' => ''
                 ];
                 
-                // Insert customer with automatic image handling using your enhanced save function
-                $customerId = save('customers', $customerData, 'profile_image', '../../uploads/profiles/');
+                // Insert customer with automatic image handling using save function
+                $customerId = save($customerTable, $customerData, $profileImageField);
                 
                 if ($customerId) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Customer added successfully!", "success");
@@ -64,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // Handle profile image upload if provided
                 if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] == 0) {
                     // Get old image to delete it if extension changed
-                    $oldCustomerData = fetch('customers', "id = $id");
+                    $oldCustomerData = fetch($customerTable, "id = $id");
                     $oldCustomer = !empty($oldCustomerData) ? $oldCustomerData[0] : null;
                     
                     $extension = strtolower(pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION));
@@ -96,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
                 
                 // Update customer using generic update function
-                if (update('customers', $updateData, "id = $id")) {
+                if (update($customerTable, $updateData, "id = $id")) {
                     redirect_with_message($_SERVER['PHP_SELF'], "Customer updated successfully!", "success");
                 } else {
                     redirect_with_message($_SERVER['PHP_SELF'], "Failed to update customer.", "error");
@@ -107,12 +116,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $id = $_POST['customer_id'];
                 
                 // Get image filename from DB using fetch function
-                $customerData = fetch('customers', "id = $id");
+                $customerData = fetch($customerTable, "id = $id");
                 $customer = !empty($customerData) ? $customerData[0] : null;
                 $imagePath = $customer ? $customer['image_path'] : '';
                 
                 // Delete from database using  delete function
-                if (delete("customers", $id)) {
+                if (delete($customerTable, $id)) {
                     // Delete profile image file if exists
                     if ($imagePath) {
                         $filePath = "../../uploads/profiles/" . $imagePath;
@@ -130,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // Get all customers for display using fetch function
-$customers = fetch('customers', '', 'created_at DESC');
+$customers = fetch($customerTable, '', 'created_at DESC');
 ?>
 
 <!DOCTYPE html>
@@ -188,10 +197,8 @@ $customers = fetch('customers', '', 'created_at DESC');
                 </thead>
                 <tbody>
                     <?php
-                    // Using display_all function with table format - Professor requirement for function reuse
-                    $sql = "SELECT id, first_name, last_name, email, phone, image_path, created_at FROM customers ORDER BY created_at DESC";
-                    $column_mappings = []; // Not used for account_management special handling
-                    display_all($sql, $column_mappings, 'account_management.php', 'table');
+                    // Using clean variables defined at top of file
+                    display_all($customerQuery, $columnMappings, 'account_management.php', 'table');
                     ?>
                 </tbody>
             </table>
