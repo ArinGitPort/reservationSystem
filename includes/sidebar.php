@@ -33,6 +33,12 @@
                         <span>Menu Management</span>
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="order_management.php" id="orders-link">
+                        <i class="fas fa-shopping-bag me-2"></i>
+                        <span>Order Management</span>
+                    </a>
+                </li>
             </ul>
         </div>
         

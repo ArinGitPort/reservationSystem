@@ -609,6 +609,342 @@ function redirect_with_message($location, $message, $type) {
 }
 
 
+// Order Management Functions
+
+// Create a new order and return order ID
+function createOrder($orderData) {
+    global $connection;
+    
+    $sql = "INSERT INTO orders (customer_id, customer_name, customer_phone, customer_email, 
+                              order_type, order_status, delivery_address, special_instructions, total_amount) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    
+    $stmt = mysqli_prepare($connection, $sql);
+    if (!$stmt) {
+        return false;
+    }
+    
+    mysqli_stmt_bind_param($stmt, "isssssssd", 
+        $orderData['customer_id'],
+        $orderData['customer_name'],
+        $orderData['customer_phone'], 
+        $orderData['customer_email'],
+        $orderData['order_type'],
+        $orderData['order_status'],
+        $orderData['delivery_address'],
+        $orderData['special_instructions'],
+        $orderData['total_amount']
+    );
+    
+    $result = mysqli_stmt_execute($stmt);
+    $orderId = mysqli_insert_id($connection);
+    mysqli_stmt_close($stmt);
+    
+    return $result ? $orderId : false;
+}
+
+// Add items to an order
+function addOrderItems($orderId, $items) {
+    global $connection;
+    
+    $sql = "INSERT INTO order_items (order_id, menu_id, quantity, price, subtotal) VALUES (?, ?, ?, ?, ?)";
+    $stmt = mysqli_prepare($connection, $sql);
+    
+    if (!$stmt) {
+        return false;
+    }
+    
+    $allSuccess = true;
+    foreach ($items as $item) {
+        $subtotal = $item['price'] * $item['quantity'];
+        mysqli_stmt_bind_param($stmt, "iiidd", 
+            $orderId, 
+            $item['menu_id'], 
+            $item['quantity'], 
+            $item['price'], 
+            $subtotal
+        );
+        
+        if (!mysqli_stmt_execute($stmt)) {
+            $allSuccess = false;
+            break;
+        }
+    }
+    
+    mysqli_stmt_close($stmt);
+    return $allSuccess;
+}
+
+// Get order details with items
+function getOrderDetails($orderId) {
+    global $connection;
+    
+    // Get order info
+    $orderSql = "SELECT o.*, c.first_name, c.last_name FROM orders o 
+                 LEFT JOIN customers c ON o.customer_id = c.id 
+                 WHERE o.order_id = ?";
+    $stmt = mysqli_prepare($connection, $orderSql);
+    mysqli_stmt_bind_param($stmt, "i", $orderId);
+    mysqli_stmt_execute($stmt);
+    $orderResult = mysqli_stmt_get_result($stmt);
+    $order = mysqli_fetch_assoc($orderResult);
+    mysqli_stmt_close($stmt);
+    
+    if (!$order) {
+        return false;
+    }
+    
+    // Get order items
+    $itemsSql = "SELECT oi.*, m.name, m.image_path FROM order_items oi 
+                 JOIN menu m ON oi.menu_id = m.menu_id 
+                 WHERE oi.order_id = ?";
+    $stmt = mysqli_prepare($connection, $itemsSql);
+    mysqli_stmt_bind_param($stmt, "i", $orderId);
+    mysqli_stmt_execute($stmt);
+    $itemsResult = mysqli_stmt_get_result($stmt);
+    
+    $items = [];
+    while ($item = mysqli_fetch_assoc($itemsResult)) {
+        $items[] = $item;
+    }
+    mysqli_stmt_close($stmt);
+    
+    $order['items'] = $items;
+    return $order;
+}
+
+// Update order status
+function updateOrderStatus($orderId, $status) {
+    return update('orders', ['order_status' => $status], "order_id = $orderId");
+}
+
+// Get customer orders
+function getCustomerOrders($customerId, $limit = 10) {
+    return fetch('orders', "customer_id = $customerId", "order_date DESC", $limit);
+}
+
+// Calculate order total from items
+function calculateOrderTotal($items) {
+    $total = 0;
+    foreach ($items as $item) {
+        $total += $item['price'] * $item['quantity'];
+    }
+    return $total;
+}
+
+// Find or create customer by email
+function findOrCreateCustomer($name, $email, $phone) {
+    global $connection;
+    
+    // Try to find existing customer by email
+    $existingCustomer = fetch('customers', "email = '$email'");
+    
+    if (!empty($existingCustomer)) {
+        return $existingCustomer[0]['id'];
+    }
+    
+    // Create new customer
+    $nameParts = explode(' ', $name, 2);
+    $firstName = $nameParts[0];
+    $lastName = isset($nameParts[1]) ? $nameParts[1] : '';
+    
+    $customerData = [
+        'first_name' => $firstName,
+        'last_name' => $lastName,
+        'email' => $email,
+        'phone' => $phone
+    ];
+    
+    return save('customers', $customerData);
+}
+
+// Get menu items with optional filtering
+function getMenuItems($bestSellerOnly = false, $limit = null) {
+    $conditions = $bestSellerOnly ? 'is_best_seller = 1' : '';
+    $orderBy = 'is_best_seller DESC, name ASC';
+    return fetch('menu', $conditions, $orderBy, $limit);
+}
+
+// Process complete order - handles everything from validation to database storage
+function processOrder($orderData) {
+    try {
+        // Validate required fields
+        if (empty($orderData['customer_name']) || empty($orderData['customer_phone']) || empty($orderData['cart_items'])) {
+            throw new Exception('Missing required fields');
+        }
+        
+        // Find or create customer
+        $customerId = findOrCreateCustomer(
+            $orderData['customer_name'],
+            $orderData['customer_email'] ?? '',
+            $orderData['customer_phone']
+        );
+        
+        if (!$customerId) {
+            throw new Exception('Failed to create customer record');
+        }
+        
+        // Calculate total
+        $total = calculateOrderTotal($orderData['cart_items']);
+        
+        // Prepare order data
+        $paymentMethod = $orderData['payment_method'] ?? 'cash';
+        $orderStatus = ($paymentMethod === 'cash') ? 'pending' : 'confirmed';
+        
+        $dbOrderData = [
+            'customer_id' => $customerId,
+            'customer_name' => $orderData['customer_name'],
+            'customer_phone' => $orderData['customer_phone'],
+            'customer_email' => $orderData['customer_email'] ?? '',
+            'order_type' => $orderData['order_type'],
+            'order_status' => $orderStatus,
+            'delivery_address' => $orderData['delivery_address'] ?? '',
+            'special_instructions' => $orderData['special_instructions'] ?? '',
+            'total_amount' => $total
+        ];
+        
+        // Create order
+        $orderId = createOrder($dbOrderData);
+        
+        if (!$orderId) {
+            throw new Exception('Failed to create order');
+        }
+        
+        // Add order items
+        $success = addOrderItems($orderId, $orderData['cart_items']);
+        
+        if (!$success) {
+            throw new Exception('Failed to add order items');
+        }
+        
+        // Return success response
+        return [
+            'success' => true,
+            'message' => 'Order placed successfully!',
+            'order_id' => $orderId,
+            'order_number' => sprintf('EFH-%06d', $orderId)
+        ];
+        
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+// Order Management Functions for Admin
+function getAllOrders($limit = null, $status = null, $orderBy = 'order_date DESC') {
+    global $connection;
+    
+    $sql = "SELECT o.*, c.first_name, c.last_name, c.email as customer_email 
+            FROM orders o 
+            LEFT JOIN customers c ON o.customer_id = c.id";
+    
+    if ($status) {
+        $sql .= " WHERE o.order_status = '" . mysqli_real_escape_string($connection, $status) . "'";
+    }
+    
+    $sql .= " ORDER BY " . $orderBy;
+    
+    if ($limit) {
+        $sql .= " LIMIT " . intval($limit);
+    }
+    
+    $result = mysqli_query($connection, $sql);
+    $orders = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $orders[] = $row;
+    }
+    return $orders;
+}
+
+function getOrderById($orderId) {
+    global $connection;
+    
+    $orderId = intval($orderId);
+    $sql = "SELECT o.*, c.first_name, c.last_name, c.email as customer_email 
+            FROM orders o 
+            LEFT JOIN customers c ON o.customer_id = c.id 
+            WHERE o.order_id = $orderId";
+    
+    $result = mysqli_query($connection, $sql);
+    return mysqli_fetch_assoc($result);
+}
+
+function getOrderItemsById($orderId) {
+    global $connection;
+    
+    $orderId = intval($orderId);
+    $sql = "SELECT oi.*, m.name as menu_name 
+            FROM order_items oi 
+            JOIN menu m ON oi.menu_id = m.menu_id 
+            WHERE oi.order_id = $orderId";
+    
+    $result = mysqli_query($connection, $sql);
+    $items = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $items[] = $row;
+    }
+    return $items;
+}
+
+function getOrderStatusCounts() {
+    global $connection;
+    
+    $sql = "SELECT order_status, COUNT(*) as count FROM orders GROUP BY order_status";
+    $result = mysqli_query($connection, $sql);
+    
+    $counts = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $counts[$row['order_status']] = $row['count'];
+    }
+    return $counts;
+}
+
+function getTodaysOrders() {
+    global $connection;
+    
+    $sql = "SELECT COUNT(*) as count, SUM(total_amount) as total_revenue 
+            FROM orders 
+            WHERE DATE(order_date) = CURDATE()";
+    
+    $result = mysqli_query($connection, $sql);
+    return mysqli_fetch_assoc($result);
+}
+
+function getRecentOrders($limit = 5) {
+    return getAllOrders($limit, null, 'order_date DESC');
+}
+
+function searchOrders($searchTerm, $status = null) {
+    global $connection;
+    
+    $searchTerm = mysqli_real_escape_string($connection, $searchTerm);
+    
+    $sql = "SELECT o.*, c.first_name, c.last_name, c.email as customer_email 
+            FROM orders o 
+            LEFT JOIN customers c ON o.customer_id = c.id 
+            WHERE (o.customer_name LIKE '%$searchTerm%' 
+                OR o.customer_phone LIKE '%$searchTerm%' 
+                OR o.customer_email LIKE '%$searchTerm%' 
+                OR o.order_id LIKE '%$searchTerm%' 
+                OR CONCAT('EFH-', LPAD(o.order_id, 6, '0')) LIKE '%$searchTerm%')";
+    
+    if ($status) {
+        $sql .= " AND o.order_status = '" . mysqli_real_escape_string($connection, $status) . "'";
+    }
+    
+    $sql .= " ORDER BY o.order_date DESC";
+    
+    $result = mysqli_query($connection, $sql);
+    $orders = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $orders[] = $row;
+    }
+    return $orders;
+}
+
 function closeConnection() {
     global $connection;
     mysqli_close($connection);

@@ -55,3 +55,40 @@ INSERT INTO reservations (customer_id, reservation_date, reservation_time, party
 (1, '2025-08-10', '19:00:00', 4, 5, 'Window table preferred'),
 (2, '2025-08-11', '18:30:00', 2, 3, 'Vegetarian menu please'),
 (3, '2025-08-12', '20:00:00', 6, 8, 'Birthday celebration');
+
+CREATE TABLE orders (
+    order_id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_id INT NOT NULL,
+    total_amount DECIMAL(10,2) NOT NULL,
+    order_status ENUM('pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled') DEFAULT 'pending',
+    order_type ENUM('dine-in', 'takeout', 'delivery') DEFAULT 'dine-in',
+    customer_name VARCHAR(100) NOT NULL,
+    customer_phone VARCHAR(20) NOT NULL,
+    customer_email VARCHAR(100),
+    delivery_address TEXT NULL,
+    special_instructions TEXT NULL,
+    order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE order_items (
+    item_id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT NOT NULL,
+    menu_id INT NOT NULL,
+    quantity INT NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    subtotal DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
+    FOREIGN KEY (menu_id) REFERENCES menu(menu_id) ON DELETE CASCADE
+);
+
+-- Add some sample menu items for testing
+INSERT INTO menu (name, price, image_path, is_best_seller) VALUES
+('Adobo Rice Bowl', 150.00, '1.jpg', 1),
+('Sisig Platter', 180.00, '2.jpg', 1),
+('Lechon Kawali', 220.00, '3.jpg', 0),
+('Chicken Inasal', 160.00, '4.jpg', 1),
+('Beef Caldereta', 200.00, '5.jpg', 0),
+('Fish Fillet', 190.00, '6.jpg', 0),
+('Pork BBQ Skewers', 120.00, '7.jpg', 0),
+('Vegetable Lumpia', 100.00, '8.jpg', 0);
