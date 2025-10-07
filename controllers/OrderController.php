@@ -183,16 +183,21 @@ class OrderController {
                 return;
             }
             
-            // Get order items with menu details using custom SQL for JOIN
-            global $connection;
-            $itemsQuery = "SELECT oi.*, m.name, m.price 
-                          FROM order_items oi 
-                          JOIN menu m ON oi.menu_id = m.menu_id 
-                          WHERE oi.order_id = $orderId";
-            $itemsResult = mysqli_query($connection, $itemsQuery);
+            // Get order items using DRY fetch() function
+            $orderItems = fetch('order_items', "order_id = $orderId");
             $items = [];
-            while ($row = mysqli_fetch_assoc($itemsResult)) {
-                $items[] = $row;
+            
+            // Enhance order items with menu details using DRY fetch()
+            if ($orderItems) {
+                foreach ($orderItems as $item) {
+                    $menuDetails = fetch('menu', "menu_id = " . $item['menu_id']);
+                    if ($menuDetails) {
+                        $item['name'] = $menuDetails[0]['name'];
+                        $item['menu_price'] = $menuDetails[0]['price']; // Avoid conflicts with order_items price
+                        $item['image'] = $menuDetails[0]['image_path'] ?? '';
+                    }
+                    $items[] = $item;
+                }
             }
             
             echo json_encode([
@@ -266,13 +271,19 @@ class OrderController {
                 return;
             }
             
-            // Delete order items first using DRY delete() function (foreign key constraint)
-            global $connection;
-            $itemsResult = mysqli_query($connection, "DELETE FROM order_items WHERE order_id = $orderId");
+            // Delete order items first using DRY approach (foreign key constraint)
+            // First get all order items for this order
+            $orderItems = fetch('order_items', "order_id = $orderId");
             
-            if (!$itemsResult) {
-                echo json_encode(['success' => false, 'message' => 'Failed to delete order items']);
-                return;
+            // Delete each order item using generic delete() function
+            if ($orderItems) {
+                foreach ($orderItems as $item) {
+                    $deleteResult = delete('order_items', $item['id'], 'id');
+                    if (!$deleteResult) {
+                        echo json_encode(['success' => false, 'message' => 'Failed to delete order items']);
+                        return;
+                    }
+                }
             }
             
             // Delete the order using DRY delete() function
