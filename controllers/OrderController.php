@@ -253,6 +253,7 @@ class OrderController {
      */
     private static function deleteOrder() {
         $orderId = $_POST['order_id'] ?? $_GET['order_id'] ?? 0;
+        
         if (!$orderId) {
             echo json_encode(['success' => false, 'message' => 'Order ID required']);
             return;
@@ -262,34 +263,51 @@ class OrderController {
             // Check if order exists and is deletable (CANCELLED status)
             $order = fetch('orders', "order_id = $orderId");
             if (!$order) {
-                echo json_encode(['success' => false, 'message' => 'Order not found']);
+                echo json_encode(['success' => false, 'message' => "Order not found"]);
                 return;
             }
             
-            if (strtoupper($order[0]['order_status']) !== 'CANCELLED') {
-                echo json_encode(['success' => false, 'message' => 'Only cancelled orders can be deleted']);
+            $orderStatus = strtolower($order[0]['order_status']);
+            if ($orderStatus !== 'cancelled') {
+                echo json_encode(['success' => false, 'message' => "Only cancelled orders can be deleted. Please cancel this order first."]);
                 return;
             }
             
-            // Delete order items first using DRY approach (foreign key constraint)
-            // First get all order items for this order
-            $orderItems = fetch('order_items', "order_id = $orderId");
+            // Delete order items first (foreign key constraint)
+            global $connection;
             
-            // Delete each order item using generic delete() function
-            if ($orderItems) {
-                foreach ($orderItems as $item) {
-                    $deleteResult = delete('order_items', $item['id'], 'id');
-                    if (!$deleteResult) {
-                        echo json_encode(['success' => false, 'message' => 'Failed to delete order items']);
-                        return;
-                    }
-                }
+            $deleteItemsQuery = "DELETE FROM order_items WHERE order_id = ?";
+            $stmt = mysqli_prepare($connection, $deleteItemsQuery);
+            
+            if (!$stmt) {
+                echo json_encode(['success' => false, 'message' => 'Failed to delete order items']);
+                return;
             }
             
-            // Delete the order using DRY delete() function
-            $result = delete('orders', $orderId, 'order_id');
+            mysqli_stmt_bind_param($stmt, "i", $orderId);
+            $itemsDeleteResult = mysqli_stmt_execute($stmt);
+            mysqli_stmt_close($stmt);
             
-            if ($result) {
+            if (!$itemsDeleteResult) {
+                echo json_encode(['success' => false, 'message' => 'Failed to delete order items']);
+                return;
+            }
+            
+            // Delete the main order
+            $deleteOrderQuery = "DELETE FROM orders WHERE order_id = ?";
+            $orderStmt = mysqli_prepare($connection, $deleteOrderQuery);
+            
+            if (!$orderStmt) {
+                echo json_encode(['success' => false, 'message' => 'Failed to delete order']);
+                return;
+            }
+            
+            mysqli_stmt_bind_param($orderStmt, "i", $orderId);
+            $result = mysqli_stmt_execute($orderStmt);
+            $orderAffectedRows = mysqli_stmt_affected_rows($orderStmt);
+            mysqli_stmt_close($orderStmt);
+            
+            if ($result && $orderAffectedRows > 0) {
                 echo json_encode(['success' => true, 'message' => 'Order deleted successfully']);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Failed to delete order']);

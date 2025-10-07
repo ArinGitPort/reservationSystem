@@ -489,7 +489,15 @@ function deleteOrder(orderId) {
             loadOrdersTable();
             loadDashboardData();
         } else {
-            showToast('Failed to delete order: ' + (data.error || 'Unknown error'), 'error');
+            // Show user-friendly error message
+            let userMessage = data.message || 'Unknown error occurred';
+            
+            // Check if it's a status-related error and provide helpful guidance
+            if (userMessage.includes('Only cancelled orders can be deleted')) {
+                showToast('Cannot delete order: You can only delete orders that have been cancelled first. Please cancel this order before attempting to delete it.', 'warning', 6000);
+            } else {
+                showToast('Failed to delete order: ' + userMessage, 'error');
+            }
         }
     })
     .catch(error => {
@@ -614,6 +622,7 @@ function showConfirmation(title, message, type = 'warning', onConfirm = null, on
         }
     }, { once: true });
 }
+
 
 // Enhanced toast notification system
 function showToast(message, type = 'info', duration = 4000) {
