@@ -1,11 +1,9 @@
 <?php
 
 
-/*
-// Database configuration
 $host = 'localhost';
 $username = 'root';
-$password = '1234';
+$password = 'password';
 $database = 'ellenfoodhouse';
 
 // Create connection
@@ -19,4 +17,3 @@ if ($conn->connect_error) {
 // Set charset to utf8
 $conn->set_charset("utf8");
 ?>
-*/

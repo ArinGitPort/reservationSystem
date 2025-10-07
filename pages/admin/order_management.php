@@ -1,37 +1,26 @@
 <?php
 session_start();
 require_once '../../config/db_model.php';
+require_once '../../controllers/OrderController.php';
 
-// Handle AJAX requests
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    $action = $_POST['action'];
-    
-    if ($action === 'update_status') {
-        $orderId = $_POST['order_id'];
-        $newStatus = $_POST['new_status'];
-        
-        $success = updateOrderStatus($orderId, $newStatus);
-        
-        echo json_encode([
-            'success' => $success,
-            'message' => $success ? 'Order status updated successfully' : 'Failed to update order status'
-        ]);
-        exit;
-    }
+// Handle AJAX requests through OrderController
+if (isset($_POST['action']) || isset($_GET['action'])) {
+    OrderController::handleRequest();
+    exit; // Ensure script stops after controller sends JSON response
 }
 
 // Get filter and search parameters
 $statusFilter = $_GET['status'] ?? '';
 $searchTerm = $_GET['search'] ?? '';
 
-// Get orders based on filters
+// Get orders based on filters (using db_model functions directly)
 if ($searchTerm) {
     $orders = searchOrders($searchTerm, $statusFilter ?: null);
 } else {
     $orders = getAllOrders(null, $statusFilter ?: null);
 }
 
-// Get dashboard data
+// Get dashboard data (using db_model functions directly)
 $statusCounts = getOrderStatusCounts();
 $todaysData = getTodaysOrders();
 ?>
@@ -306,82 +295,8 @@ $todaysData = getTodaysOrders();
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../../assets/js/order_management.js"></script>
     <script>
-        // Handle status changes
-        document.querySelectorAll('.status-select').forEach(select => {
-            select.addEventListener('change', function() {
-                const orderId = this.dataset.orderId;
-                const newStatus = this.value;
-                const currentStatus = this.dataset.currentStatus;
-                
-                if (newStatus === currentStatus) return;
-                
-                updateOrderStatus(orderId, newStatus, this);
-            });
-        });
-        
-        function updateOrderStatus(orderId, newStatus, selectElement) {
-            const formData = new FormData();
-            formData.append('action', 'update_status');
-            formData.append('order_id', orderId);
-            formData.append('new_status', newStatus);
-            
-            fetch('order_management.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    selectElement.dataset.currentStatus = newStatus;
-                    showNotification('Order status updated successfully', 'success');
-                } else {
-                    // Revert selection
-                    selectElement.value = selectElement.dataset.currentStatus;
-                    showNotification('Failed to update order status', 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                selectElement.value = selectElement.dataset.currentStatus;
-                showNotification('An error occurred', 'error');
-            });
-        }
-        
-        function viewOrderDetails(orderId) {
-            fetch(`../../components/get_order_details.php?order_id=${orderId}`)
-                .then(response => response.text())
-                .then(html => {
-                    document.getElementById('orderDetailsContent').innerHTML = html;
-                    const modal = new bootstrap.Modal(document.getElementById('orderDetailsModal'));
-                    modal.show();
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showNotification('Failed to load order details', 'error');
-                });
-        }
-        
-        function refreshOrders() {
-            window.location.reload();
-        }
-        
-        function showNotification(message, type) {
-            const notification = document.createElement('div');
-            notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed`;
-            notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-            notification.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.remove();
-            }, 5000);
-        }
-        
         // Sidebar toggle function
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
