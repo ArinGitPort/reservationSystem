@@ -1,331 +1,413 @@
 <?php
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-class OrderController
-{
-    private $model;
-    
-    public function __construct() {
-        require_once __DIR__ . '/../config/db_model.php';
-        $this->model = new DbModel();
-    }
+// Handle different calling contexts (direct vs from admin pages)
+$configPath = file_exists('../config/db_model.php') ? '../config/db_model.php' : '../../config/db_model.php';
+require_once $configPath;
+
+class OrderController {
     
     /**
-     * Main request handler for AJAX calls from admin pages
-     * Routes actions to appropriate methods
+     * Handle API requests (for cart checkout)
      */
-    public static function handleRequest()
-    {
-        $action = $_POST['action'] ?? $_GET['action'] ?? null;
-        
-        if (!$action) {
-            header('Content-Type: application/json');
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'No action specified']);
-            exit;
-        }
-        
-        // Route to appropriate handler based on action
-        switch ($action) {
-            case 'update_status':
-                $orderId = intval($_POST['order_id']);
-                $status = $_POST['status'];
-                self::updateOrderStatus($orderId, $status);
-                break;
-                
-            case 'delete_order':
-                $orderId = intval($_POST['order_id']);
-                self::deleteOrder($orderId);
-                break;
-                
-            case 'get_order':
-                $orderId = intval($_GET['id'] ?? 0);
-                self::getOrderById($orderId);
-                break;
-                
-            default:
-                header('Content-Type: application/json');
-                http_response_code(400);
-                echo json_encode(['success' => false, 'message' => 'Invalid action: ' . $action]);
-                exit;
-        }
-    }
-    
-    public static function handle()
-    {
-        $controller = new self();
-        return $controller->processNewOrder();
-    }
-    
-    private function processNewOrder()
-    {
-        // CORS + JSON response headers (duplicate-safe)
+    public static function handle() {
         header('Content-Type: application/json');
-        header('Access-Control-Allow-Origin: *');
-        header('Access-Control-Allow-Methods: POST, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type');
-
-        // Respond to preflight
-        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-            http_response_code(204);
-            exit;
-        }
-
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
+        
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            self::processCartCheckout();
+        } else {
             echo json_encode(['success' => false, 'message' => 'Method not allowed']);
-            exit;
-        }
-
-        $raw = file_get_contents('php://input');
-        $input = json_decode($raw, true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Invalid JSON payload', 'error' => json_last_error_msg()]);
-            exit;
-        }
-
-        $validation = $this->validateInput($input);
-        if ($validation['ok'] === false) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => $validation['message']]);
-            exit;
-        }
-
-        // Attach session user id if available (session already started in process_order.php)
-        if (!empty($_SESSION['user_id'])) {
-            // do not overwrite an explicit customer_id in the payload
-            if (empty($input['customer_id'])) {
-                $input['customer_id'] = $_SESSION['user_id'];
-            }
-        }
-
-        try {
-            $result = $this->model->processOrder($input);
-
-            if (!is_array($result)) {
-                http_response_code(500);
-                echo json_encode(['success' => false, 'message' => 'Invalid response from model']);
-                exit;
-            }
-
-            if (isset($result['success']) && $result['success'] === false) {
-                http_response_code(400);
-            } else {
-                http_response_code(200);
-            }
-
-            echo json_encode($result);
-        } catch (Exception $e) {
-            error_log('OrderController error: ' . $e->getMessage());
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Server error',
-                'details' => $e->getMessage()
-            ]);
         }
     }
 
     /**
-     * Basic, non-opinionated validation for an order payload.
-     * Adjust as needed to match processOrder() expectation.
-     *
-     * Expected minimal shape: ['cart_items' => array([...])]
+     * Handle AJAX requests for order management
      */
-    private function validateInput($input)
-    {
-        if (!is_array($input)) {
-            return ['ok' => false, 'message' => 'Request body must be a JSON object'];
-        }
-
-        if (empty($input['cart_items']) || !is_array($input['cart_items'])) {
-            return ['ok' => false, 'message' => 'Missing or invalid "cart_items" array'];
-        }
-
-        if (count($input['cart_items']) === 0) {
-            return ['ok' => false, 'message' => 'Order must contain at least one item'];
-        }
-
-        // basic per-item checks
-        foreach ($input['cart_items'] as $i => $item) {
-            if (!is_array($item)) {
-                return ['ok' => false, 'message' => "Each item must be an object (index: $i)"];
-            }
-            if (empty($item['menu_id'])) {
-                return ['ok' => false, 'message' => "Each item must include a 'menu_id' (index: $i)"];
-            }
-            if (empty($item['quantity']) || !is_numeric($item['quantity']) || $item['quantity'] < 1) {
-                return ['ok' => false, 'message' => "Each item must include a valid 'quantity' (index: $i)"];
-            }
-        }
-
-        return ['ok' => true, 'message' => 'ok'];
-    }
-
-    /**
-     * Get all orders with optional filtering
-     * Usage: OrderController::getAllOrders($limit, $status)
-     */
-    public static function getAllOrders($limit = null, $status = null)
-    {
+    public static function handleRequest() {
         header('Content-Type: application/json');
-
+        
         try {
-            $orders = getAllOrders($limit, $status);
+            // Check if database connection exists
+            if (!isset($GLOBALS['connection'])) {
+                echo json_encode(['success' => false, 'error' => 'Database connection not available']);
+                return;
+            }
+            
+            $action = $_POST['action'] ?? $_GET['action'] ?? '';
+            
+            switch($action) {
+                case 'test_connection':
+                    self::testConnection();
+                    break;
+                case 'get_dashboard_data':
+                    self::getDashboardData();
+                    break;
+                case 'get_orders':
+                    self::getOrders();
+                    break;
+                case 'update_order_status':
+                    self::updateOrderStatus();
+                    break;
+                case 'get_order_details':
+                    self::getOrderDetails();
+                    break;
+                case 'cancel_order':
+                    self::cancelOrder();
+                    break;
+                case 'delete_order':
+                    self::deleteOrder();
+                    break;
+                case 'process_checkout':
+                    self::processCartCheckout();
+                    break;
+                default:
+                    echo json_encode(['success' => false, 'error' => 'Invalid action: ' . $action]);
+                    break;
+            }
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'error' => 'Controller error: ' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * Test database connection
+     */
+    private static function testConnection() {
+        try {
+            $db = require_once __DIR__ . '/../config/db_model.php';
+            
+            // Test basic connection
+            $result = fetch("SELECT 1 as test");
+            
+            // Test orders table
+            $orders = fetch("SELECT COUNT(*) as count FROM orders");
             
             echo json_encode([
                 'success' => true,
-                'data' => $orders,
-                'count' => count($orders)
-            ]);
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Failed to fetch orders',
-                'error' => $e->getMessage()
-            ]);
-        }
-    }
-
-    /**
-     * Get order by ID with order items
-     * Usage: OrderController::getOrderById($orderId)
-     */
-    public static function getOrderById($orderId)
-    {
-        header('Content-Type: application/json');
-
-        if (empty($orderId) || !is_numeric($orderId)) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Invalid order ID']);
-            exit;
-        }
-
-        try {
-            $order = getOrderById($orderId);
-            
-            if (!$order) {
-                http_response_code(404);
-                echo json_encode(['success' => false, 'message' => 'Order not found']);
-                exit;
-            }
-
-            $items = getOrderItemsById($orderId);
-            
-            echo json_encode([
-                'success' => true,
+                'message' => 'Connection successful',
                 'data' => [
-                    'order' => $order,
-                    'items' => $items
+                    'connection_test' => $result,
+                    'orders_count' => $orders
                 ]
             ]);
-            exit;
         } catch (Exception $e) {
-            http_response_code(500);
             echo json_encode([
                 'success' => false,
-                'message' => 'Failed to fetch order',
-                'error' => $e->getMessage()
+                'error' => 'Connection test failed: ' . $e->getMessage()
             ]);
-            exit;
+        }
+    }
+
+    private static function getDashboardData() {
+        try {
+            $statusCounts = [];
+            $statuses = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
+            
+            foreach ($statuses as $status) {
+                $orders = fetch('orders', "order_status = '$status'");
+                $statusCounts[$status] = $orders ? count($orders) : 0;
+            }
+            
+            $todayOrders = fetch('orders', "DATE(order_date) = CURDATE()");
+            $todaysData = [
+                'order_count' => $todayOrders ? count($todayOrders) : 0,
+                'total_revenue' => $todayOrders ? array_sum(array_column($todayOrders, 'total_amount')) : 0
+            ];
+            
+            echo json_encode(['success' => true, 'statusCounts' => $statusCounts, 'todaysData' => $todaysData]);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * Get orders list with filtering - using db_model fetch()
+     */
+    private static function getOrders() {
+        try {
+            $searchTerm = $_GET['search'] ?? '';
+            $statusFilter = $_GET['status'] ?? '';
+            
+            $conditions = [];
+            if ($searchTerm) {
+                $searchTerm = mysqli_real_escape_string($GLOBALS['connection'], $searchTerm);
+                $conditions[] = "(customer_name LIKE '%$searchTerm%' OR customer_email LIKE '%$searchTerm%' OR customer_phone LIKE '%$searchTerm%')";
+            }
+            if ($statusFilter) {
+                $conditions[] = "order_status = '" . mysqli_real_escape_string($GLOBALS['connection'], $statusFilter) . "'";
+            }
+            
+            $whereClause = implode(' AND ', $conditions);
+            $orders = fetch('orders', $whereClause, 'order_date DESC');
+            
+            echo json_encode(['success' => true, 'orders' => $orders ? $orders : []]);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * Update order status - using db_model update()
+     */
+    private static function updateOrderStatus() {
+        $orderId = $_POST['order_id'] ?? 0;
+        $newStatus = $_POST['status'] ?? '';
+        
+        $validStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
+        if (!$orderId || !$newStatus || !in_array($newStatus, $validStatuses)) {
+            echo json_encode(['error' => 'Invalid order ID or status']);
+            return;
+        }
+        
+        $result = update('orders', ['order_status' => $newStatus], "order_id = $orderId");
+        echo json_encode($result ? ['success' => true] : ['error' => 'Update failed']);
+    }
+    
+    /**
+     * Get order details - using db_model fetch()
+     */
+    private static function getOrderDetails() {
+        $orderId = $_GET['order_id'] ?? 0;
+        if (!$orderId) {
+            echo json_encode(['error' => 'Order ID required']);
+            return;
+        }
+        
+        try {
+            // Get order details using DRY fetch() function
+            $order = fetch('orders', "order_id = $orderId");
+            if (!$order) {
+                echo json_encode(['error' => 'Order not found']);
+                return;
+            }
+            
+            // Get order items with menu details using custom SQL for JOIN
+            global $connection;
+            $itemsQuery = "SELECT oi.*, m.name, m.price 
+                          FROM order_items oi 
+                          JOIN menu m ON oi.menu_id = m.menu_id 
+                          WHERE oi.order_id = $orderId";
+            $itemsResult = mysqli_query($connection, $itemsQuery);
+            $items = [];
+            while ($row = mysqli_fetch_assoc($itemsResult)) {
+                $items[] = $row;
+            }
+            
+            echo json_encode([
+                'success' => true, 
+                'order' => $order[0], 
+                'items' => $items,
+                'can_cancel' => strtoupper($order[0]['order_status']) === 'PENDING',
+                'can_delete' => strtoupper($order[0]['order_status']) === 'CANCELLED'
+            ]);
+        } catch (Exception $e) {
+            echo json_encode(['error' => 'Failed to fetch order details: ' . $e->getMessage()]);
         }
     }
 
     /**
-     * Update order status
-     * Usage: OrderController::updateOrderStatus($orderId, $status)
+     * Cancel order - using DRY update() function
      */
-    public static function updateOrderStatus($orderId, $status)
-    {
-        header('Content-Type: application/json');
-
-        if (empty($orderId) || !is_numeric($orderId)) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Invalid order ID']);
-            exit;
+    private static function cancelOrder() {
+        $orderId = $_POST['order_id'] ?? $_GET['order_id'] ?? 0;
+        if (!$orderId) {
+            echo json_encode(['success' => false, 'message' => 'Order ID required']);
+            return;
         }
-
-        $validStatuses = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
         
-        if (!in_array($status, $validStatuses)) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Invalid order status. Valid statuses: ' . implode(', ', $validStatuses)
-            ]);
-            exit;
-        }
-
         try {
-            $result = updateOrderStatus($orderId, $status);
+            // Check if order exists and is cancellable (PENDING status)
+            $order = fetch('orders', "order_id = $orderId");
+            if (!$order) {
+                echo json_encode(['success' => false, 'message' => 'Order not found']);
+                return;
+            }
+            
+            if (strtoupper($order[0]['order_status']) !== 'PENDING') {
+                echo json_encode(['success' => false, 'message' => 'Only pending orders can be cancelled']);
+                return;
+            }
+            
+            // Update order status to CANCELLED using DRY update() function
+            $result = update('orders', ['order_status' => 'cancelled'], "order_id = $orderId");
             
             if ($result) {
-                echo json_encode([
-                    'success' => true,
-                    'message' => 'Order status updated successfully'
-                ]);
-                exit;
+                echo json_encode(['success' => true, 'message' => 'Order cancelled successfully']);
             } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Failed to update order status'
-                ]);
-                exit;
+                echo json_encode(['success' => false, 'message' => 'Failed to cancel order']);
             }
         } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Error updating order status',
-                'error' => $e->getMessage()
-            ]);
-            exit;
+            echo json_encode(['success' => false, 'message' => 'Error cancelling order: ' . $e->getMessage()]);
         }
     }
 
     /**
-     * Delete order
-     * Usage: OrderController::deleteOrder($orderId)
+     * Delete order - using DRY delete() function
      */
-    public static function deleteOrder($orderId)
-    {
-        header('Content-Type: application/json');
-
-        if (empty($orderId) || !is_numeric($orderId)) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Invalid order ID']);
-            exit;
+    private static function deleteOrder() {
+        $orderId = $_POST['order_id'] ?? $_GET['order_id'] ?? 0;
+        if (!$orderId) {
+            echo json_encode(['success' => false, 'message' => 'Order ID required']);
+            return;
         }
-
+        
         try {
-            // Delete order (will cascade to order_items due to foreign key)
+            // Check if order exists and is deletable (CANCELLED status)
+            $order = fetch('orders', "order_id = $orderId");
+            if (!$order) {
+                echo json_encode(['success' => false, 'message' => 'Order not found']);
+                return;
+            }
+            
+            if (strtoupper($order[0]['order_status']) !== 'CANCELLED') {
+                echo json_encode(['success' => false, 'message' => 'Only cancelled orders can be deleted']);
+                return;
+            }
+            
+            // Delete order items first using DRY delete() function (foreign key constraint)
+            global $connection;
+            $itemsResult = mysqli_query($connection, "DELETE FROM order_items WHERE order_id = $orderId");
+            
+            if (!$itemsResult) {
+                echo json_encode(['success' => false, 'message' => 'Failed to delete order items']);
+                return;
+            }
+            
+            // Delete the order using DRY delete() function
             $result = delete('orders', $orderId, 'order_id');
             
             if ($result) {
-                echo json_encode([
-                    'success' => true,
-                    'message' => 'Order deleted successfully'
-                ]);
-                exit;
+                echo json_encode(['success' => true, 'message' => 'Order deleted successfully']);
             } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Failed to delete order'
-                ]);
-                exit;
+                echo json_encode(['success' => false, 'message' => 'Failed to delete order']);
             }
         } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Error deleting order',
-                'error' => $e->getMessage()
+            echo json_encode(['success' => false, 'message' => 'Error deleting order: ' . $e->getMessage()]);
+        }
+    }
+    
+
+    
+    /**
+     * Process cart checkout - using db_model save()
+     */
+    private static function processCartCheckout() {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        // Basic validation
+        $required = ['customer_name', 'customer_phone', 'order_type', 'cart_items', 'total_amount'];
+        foreach ($required as $field) {
+            if (empty($input[$field])) {
+                echo json_encode(['success' => false, 'message' => "Missing: $field"]);
+                return;
+            }
+        }
+        
+        if (!in_array($input['order_type'], ['dine-in', 'takeout', 'delivery'])) {
+            echo json_encode(['success' => false, 'message' => 'Invalid order type']);
+            return;
+        }
+        
+        // Get or create customer
+        $customerId = self::getOrCreateCustomer($input);
+        
+        // Create order using your save() function
+        $orderData = [
+            'customer_id' => $customerId,
+            'total_amount' => $input['total_amount'],
+            'order_status' => 'pending',
+            'order_type' => $input['order_type'],
+            'customer_name' => $input['customer_name'],
+            'customer_phone' => $input['customer_phone'],
+            'customer_email' => $input['customer_email'] ?? '',
+            'delivery_address' => $input['delivery_address'] ?? '',
+            'special_instructions' => $input['special_instructions'] ?? ''
+        ];
+        
+        $orderId = save('orders', $orderData);
+        
+        if (!$orderId) {
+            echo json_encode(['success' => false, 'message' => 'Failed to create order']);
+            return;
+        }
+        
+        // Add order items using your save() function
+        foreach ($input['cart_items'] as $item) {
+            save('order_items', [
+                'order_id' => $orderId,
+                'menu_id' => $item['menu_id'],
+                'quantity' => $item['quantity'],
+                'price' => $item['price'],
+                'subtotal' => $item['price'] * $item['quantity']
             ]);
-            exit;
+        }
+        
+        echo json_encode([
+            'success' => true, 
+            'message' => 'Order placed successfully!',
+            'order_id' => $orderId,
+            'order_number' => 'EFH-' . str_pad($orderId, 6, '0', STR_PAD_LEFT)
+        ]);
+    }
+    
+    /**
+     * Get or create customer - using db_model fetch() and save()
+     */
+    private static function getOrCreateCustomer($input) {
+        if (!empty($input['customer_email'])) {
+            $existing = fetch('customers', "email = '" . mysqli_real_escape_string($GLOBALS['connection'], $input['customer_email']) . "'");
+            if ($existing) return $existing[0]['id'];
+        }
+        
+        return save('customers', [
+            'first_name' => $input['customer_name'],
+            'last_name' => '', 
+            'email' => $input['customer_email'] ?? 'guest@ellenfoodhouse.com',
+            'phone' => $input['customer_phone']
+        ]);
+    }
+}
+
+// Handle direct requests to this file
+if (strpos($_SERVER['SCRIPT_NAME'], 'OrderController.php') !== false || strpos($_SERVER['REQUEST_URI'], 'OrderController.php') !== false) {
+    // Set CORS headers for frontend requests
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type');
+    
+    // Handle preflight OPTIONS request
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        http_response_code(200);
+        exit;
+    }
+    
+    // Check if this is a cart checkout request (JSON data) or admin action request
+    $input = file_get_contents('php://input');
+    $jsonData = json_decode($input, true);
+    
+    if ($jsonData && !isset($jsonData['action'])) {
+        // This is a cart checkout request (JSON without action parameter)
+        OrderController::handle();
+    } elseif (isset($_POST['action']) || isset($_GET['action'])) {
+        // This is an admin panel request
+        OrderController::handleRequest();
+    } else {
+        // Default to cart checkout for POST requests
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            OrderController::handle();
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'error' => 'No valid action found',
+                'method' => $_SERVER['REQUEST_METHOD'],
+                'get_params' => $_GET,
+                'post_params' => $_POST,
+                'script_name' => $_SERVER['SCRIPT_NAME'],
+                'request_uri' => $_SERVER['REQUEST_URI']
+            ]);
         }
     }
 }
+?>

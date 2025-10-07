@@ -1,28 +1,7 @@
 <?php
 session_start();
-require_once '../../config/db_model.php';
-require_once '../../controllers/OrderController.php';
-
-// Handle AJAX requests through OrderController
-if (isset($_POST['action']) || isset($_GET['action'])) {
-    OrderController::handleRequest();
-    exit; // Ensure script stops after controller sends JSON response
-}
-
-// Get filter and search parameters
-$statusFilter = $_GET['status'] ?? '';
-$searchTerm = $_GET['search'] ?? '';
-
-// Get orders based on filters (using db_model functions directly)
-if ($searchTerm) {
-    $orders = searchOrders($searchTerm, $statusFilter ?: null);
-} else {
-    $orders = getAllOrders(null, $statusFilter ?: null);
-}
-
-// Get dashboard data (using db_model functions directly)
-$statusCounts = getOrderStatusCounts();
-$todaysData = getTodaysOrders();
+// This is a pure VIEW file - no backend logic here
+// All data fetching is handled via AJAX calls to OrderController.php
 ?>
 
 <!DOCTYPE html>
@@ -38,81 +17,7 @@ $todaysData = getTodaysOrders();
     <!-- Custom CSS -->
     <link rel="stylesheet" href="../../assets/css/account_management.css">
     <link rel="stylesheet" href="../../assets/css/sidebar.css">
-    <style>
-        /* Order Management Specific Styles */
-        .dashboard-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .dashboard-card {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-        
-        .dashboard-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        
-        .dashboard-card h3 {
-            font-size: 2rem;
-            font-weight: 700;
-            margin: 0.5rem 0;
-            color: #343a40;
-        }
-        
-        .dashboard-card p {
-            color: #6c757d;
-            font-size: 0.9rem;
-            margin: 0;
-        }
-        
-        .card-icon {
-            font-size: 2rem;
-            margin-bottom: 1rem;
-        }
-        
-        .icon-pending { color: #ffc107; }
-        .icon-revenue { color: #28a745; }
-        
-        .filters-section {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
-            margin-bottom: 2rem;
-        }
-        
-        .order-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-        
-        .action-buttons .btn {
-            padding: 0.4rem 0.8rem;
-            margin: 0 2px;
-            border-radius: 6px;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: #6c757d;
-        }
-        
-        .empty-state i {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            opacity: 0.5;
-        }
-    </style>
+    <link rel="stylesheet" href="../../assets/css/order_management.css">
 </head>
 <body>
     <!-- Mobile Toggle Button -->
@@ -139,46 +44,51 @@ $todaysData = getTodaysOrders();
                 <div class="card-icon icon-pending">
                     <i class="fas fa-clock"></i>
                 </div>
-                <h3><?= $statusCounts['pending'] ?? 0 ?></h3>
-                <p>Pending Orders</p>
+                <div class="card-content">
+                    <h3 id="pending-count">0</h3>
+                    <p>Pending Orders</p>
+                </div>
             </div>
             
             <div class="dashboard-card">
                 <div class="card-icon icon-pending">
                     <i class="fas fa-shopping-bag"></i>
                 </div>
-                <h3><?= array_sum($statusCounts) ?></h3>
-                <p>Total Orders</p>
+                <div class="card-content">
+                    <h3 id="total-orders">0</h3>
+                    <p>Total Orders</p>
+                </div>
             </div>
             
             <div class="dashboard-card">
                 <div class="card-icon icon-revenue">
                     <i class="fas fa-peso-sign"></i>
                 </div>
-                <h3>₱<?= number_format($todaysData['total_revenue'] ?? 0, 2) ?></h3>
-                <p>Today's Revenue</p>
+                <div class="card-content">
+                    <h3 id="today-revenue">₱0.00</h3>
+                    <p>Today's Revenue</p>
+                </div>
             </div>
         </div>
         
         <!-- Filters Section -->
         <div class="filters-section">
-            <form method="GET" class="row g-3">
+            <form id="filter-form" class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">Search Orders</label>
-                    <input type="text" class="form-control" name="search" 
-                           value="<?= htmlspecialchars($searchTerm) ?>" 
+                    <input type="text" class="form-control" id="search-input" 
                            placeholder="Search by customer, phone, email, or order ID...">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Filter by Status</label>
-                    <select class="form-select" name="status">
+                    <select class="form-select" id="status-filter">
                         <option value="">All Statuses</option>
-                        <option value="pending" <?= $statusFilter === 'pending' ? 'selected' : '' ?>>Pending</option>
-                        <option value="confirmed" <?= $statusFilter === 'confirmed' ? 'selected' : '' ?>>Confirmed</option>
-                        <option value="preparing" <?= $statusFilter === 'preparing' ? 'selected' : '' ?>>Preparing</option>
-                        <option value="ready" <?= $statusFilter === 'ready' ? 'selected' : '' ?>>Ready</option>
-                        <option value="delivered" <?= $statusFilter === 'delivered' ? 'selected' : '' ?>>Delivered</option>
-                        <option value="cancelled" <?= $statusFilter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+                        <option value="pending">Pending</option>
+                        <option value="confirmed">Confirmed</option>
+                        <option value="preparing">Preparing</option>
+                        <option value="ready">Ready</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
                     </select>
                 </div>
                 <div class="col-md-2">
@@ -192,9 +102,9 @@ $todaysData = getTodaysOrders();
                 <div class="col-md-3">
                     <label class="form-label">&nbsp;</label>
                     <div>
-                        <a href="order_management.php" class="btn btn-outline-secondary">
+                        <button type="button" class="btn btn-outline-secondary" onclick="clearFilters()">
                             <i class="fas fa-times me-2"></i>Clear
-                        </a>
+                        </button>
                     </div>
                 </div>
             </form>
@@ -217,62 +127,16 @@ $todaysData = getTodaysOrders();
                             <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <?php if (empty($orders)): ?>
-                            <tr>
-                                <td colspan="9" class="empty-state">
-                                    <i class="fas fa-shopping-bag"></i>
-                                    <h5>No orders found</h5>
-                                    <p>Try adjusting your search or filter criteria.</p>
-                                </td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($orders as $index => $order): ?>
-                                <tr>
-                                    <td><?= $index + 1 ?></td>
-                                    <td><strong>EFH-<?= str_pad($order['order_id'], 6, '0', STR_PAD_LEFT) ?></strong></td>
-                                    <td>
-                                        <div class="fw-bold"><?= htmlspecialchars($order['customer_name']) ?></div>
-                                        <?php if ($order['customer_email']): ?>
-                                            <small class="text-muted"><?= htmlspecialchars($order['customer_email']) ?></small>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?= htmlspecialchars($order['customer_phone']) ?></td>
-                                    <td>
-                                        <span class="badge bg-secondary">
-                                            <i class="fas fa-<?= $order['order_type'] === 'dine-in' ? 'utensils' : ($order['order_type'] === 'takeout' ? 'shopping-bag' : 'truck') ?> me-1"></i>
-                                            <?= ucfirst(str_replace('-', ' ', $order['order_type'])) ?>
-                                        </span>
-                                    </td>
-                                    <td><strong>₱<?= number_format($order['total_amount'], 2) ?></strong></td>
-                                    <td>
-                                        <select class="form-select form-select-sm status-select" 
-                                                data-order-id="<?= $order['order_id'] ?>" 
-                                                data-current-status="<?= $order['order_status'] ?>">
-                                            <option value="pending" <?= $order['order_status'] === 'pending' ? 'selected' : '' ?>>Pending</option>
-                                            <option value="confirmed" <?= $order['order_status'] === 'confirmed' ? 'selected' : '' ?>>Confirmed</option>
-                                            <option value="preparing" <?= $order['order_status'] === 'preparing' ? 'selected' : '' ?>>Preparing</option>
-                                            <option value="ready" <?= $order['order_status'] === 'ready' ? 'selected' : '' ?>>Ready</option>
-                                            <option value="delivered" <?= $order['order_status'] === 'delivered' ? 'selected' : '' ?>>Delivered</option>
-                                            <option value="cancelled" <?= $order['order_status'] === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <div><?= date('M d, Y', strtotime($order['order_date'])) ?></div>
-                                        <small class="text-muted"><?= date('h:i A', strtotime($order['order_date'])) ?></small>
-                                    </td>
-                                    <td>
-                                        <div class="action-buttons">
-                                            <button class="btn btn-sm btn-outline-dark" 
-                                                    onclick="viewOrderDetails(<?= $order['order_id'] ?>)" 
-                                                    title="View Details">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
+                    <tbody id="orders-table-body">
+                        <tr>
+                            <td colspan="9" class="empty-state">
+                                <div class="empty-content">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                    <h5>Loading orders...</h5>
+                                    <p>Please wait while we fetch your order data.</p>
+                                </div>
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -290,20 +154,41 @@ $todaysData = getTodaysOrders();
                 <div class="modal-body" id="orderDetailsContent">
                     <!-- Order details will be loaded here -->
                 </div>
+                <div class="modal-footer" id="orderDetailsFooter">
+                    <!-- Action buttons will be loaded here based on order status -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal fade" id="confirmationModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" id="confirmModalHeader">
+                    <h5 class="modal-title" id="confirmModalTitle">
+                        <i class="fas fa-exclamation-circle me-2"></i>Confirm Action
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="confirmModalBody">
+                    Are you sure you want to proceed with this action?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-1"></i>Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" id="confirmModalButton">
+                        <i class="fas fa-check me-1"></i>Confirm
+                    </button>
+                </div>
             </div>
         </div>
     </div>
     
+    <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Order Management JavaScript -->
     <script src="../../assets/js/order_management.js"></script>
-    <script>
-        // Sidebar toggle function
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.querySelector('.sidebar-overlay');
-            sidebar.classList.toggle('active');
-            overlay.classList.toggle('active');
-        }
-    </script>
 </body>
 </html>

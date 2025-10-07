@@ -564,6 +564,12 @@ async function processOrder(event) {
             }
         }
         
+        // Calculate total amount from cart
+        let totalAmount = 0;
+        cart.forEach(item => {
+            totalAmount += item.price * item.quantity;
+        });
+
         const orderData = {
         customer_name: formData.get('customer_name'),
         customer_phone: formData.get('customer_phone'),
@@ -572,7 +578,8 @@ async function processOrder(event) {
         delivery_address: formData.get('delivery_address'),
         special_instructions: formData.get('special_instructions'),
         payment_method: paymentMethod,
-        cart_items: cart
+        cart_items: cart,
+        total_amount: totalAmount
     };    try {
         // Show loading
         const submitBtn = form.querySelector('button[type="submit"]');
@@ -580,7 +587,7 @@ async function processOrder(event) {
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
         submitBtn.disabled = true;
         
-        const response = await fetch('../api/process_order.php', {
+        const response = await fetch('../controllers/OrderController.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

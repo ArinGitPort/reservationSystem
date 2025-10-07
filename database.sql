@@ -92,3 +92,5 @@ INSERT INTO menu (name, price, image_path, is_best_seller) VALUES
 ('Fish Fillet', 190.00, '6.jpg', 0),
 ('Pork BBQ Skewers', 120.00, '7.jpg', 0),
 ('Vegetable Lumpia', 100.00, '8.jpg', 0);
+
+ALTER TABLE banners ADD COLUMN event_date DATE NULL AFTER description;
