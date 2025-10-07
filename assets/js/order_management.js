@@ -129,7 +129,8 @@ function loadOrdersTable(searchTerm = '', statusFilter = '') {
                             </td>
                             <td>
                                 <div class="action-buttons">
-                                    <button class="btn btn-sm btn-outline-dark" 
+                                    <button class="btn btn-sm" 
+                                            style="background-color: #343A40; color: white; border-color: #343A40;"
                                             onclick="viewOrderDetails(${order.order_id})" 
                                             title="View Details">
                                         <i class="fas fa-eye"></i>

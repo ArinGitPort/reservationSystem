@@ -73,15 +73,15 @@ session_start();
         
         <!-- Filters Section -->
         <div class="filters-section">
-            <form id="filter-form" class="row g-3">
+            <form id="filter-form" class="row g-2 align-items-end">
                 <div class="col-md-4">
-                    <label class="form-label">Search Orders</label>
-                    <input type="text" class="form-control" id="search-input" 
+                    <label class="form-label mb-1">Search Orders</label>
+                    <input type="text" class="form-control form-control-sm" id="search-input" 
                            placeholder="Search by customer, phone, email, or order ID...">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Filter by Status</label>
-                    <select class="form-select" id="status-filter">
+                    <label class="form-label mb-1">Filter by Status</label>
+                    <select class="form-select form-select-sm" id="status-filter">
                         <option value="">All Statuses</option>
                         <option value="pending">Pending</option>
                         <option value="confirmed">Confirmed</option>
@@ -92,20 +92,14 @@ session_start();
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">&nbsp;</label>
-                    <div>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-search me-2"></i>Filter
-                        </button>
-                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm w-100">
+                        <i class="fas fa-search me-2"></i>Filter
+                    </button>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">&nbsp;</label>
-                    <div>
-                        <button type="button" class="btn btn-outline-secondary" onclick="clearFilters()">
-                            <i class="fas fa-times me-2"></i>Clear
-                        </button>
-                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="clearFilters()">
+                        <i class="fas fa-times me-2"></i>Clear
+                    </button>
                 </div>
             </form>
         </div>
