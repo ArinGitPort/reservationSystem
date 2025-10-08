@@ -31,11 +31,6 @@ session_start();
     <div class="main-content">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h3><i class="fas fa-shopping-bag me-2"></i>Order Management</h3>
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-primary" onclick="refreshOrders()">
-                    <i class="fas fa-refresh me-2"></i>Refresh
-                </button>
-            </div>
         </div>
         
         <!-- Dashboard Cards -->
@@ -71,38 +66,44 @@ session_start();
             </div>
         </div>
         
-        <!-- Filters Section -->
-        <div class="filters-section">
-            <form id="filter-form" class="row g-2 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label mb-1">Search Orders</label>
-                    <input type="text" class="form-control form-control-sm" id="search-input" 
-                           placeholder="Search by customer, phone, email, or order ID...">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label mb-1">Filter by Status</label>
-                    <select class="form-select form-select-sm" id="status-filter">
-                        <option value="">All Statuses</option>
-                        <option value="pending">Pending</option>
-                        <option value="confirmed">Confirmed</option>
-                        <option value="preparing">Preparing</option>
-                        <option value="ready">Ready</option>
-                        <option value="delivered">Delivered</option>
-                        <option value="cancelled">Cancelled</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary btn-sm w-100">
-                        <i class="fas fa-search me-2"></i>Filter
-                    </button>
-                </div>
-                <div class="col-md-3">
-                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="clearFilters()">
-                        <i class="fas fa-times me-2"></i>Clear
-                    </button>
-                </div>
-            </form>
-        </div>
+        <!-- Search and Filter Component -->
+        <?php
+        include '../../includes/search_filter.php';
+        renderSearchFilter([
+            'placeholder' => 'Search by customer, phone, email, or order ID...',
+            'search_label' => 'Search Orders',
+            'filters' => [
+                'status' => [
+                    'label' => 'Filter by Status',
+                    'type' => 'select',
+                    'options' => [
+                        '' => 'All Statuses',
+                        'pending' => 'Pending',
+                        'confirmed' => 'Confirmed',
+                        'preparing' => 'Preparing',
+                        'ready' => 'Ready',
+                        'delivered' => 'Delivered',
+                        'cancelled' => 'Cancelled'
+                    ]
+                ],
+                'date' => [
+                    'label' => 'Order Date',
+                    'type' => 'date'
+                ]
+            ],
+            'additional_buttons' => [
+                [
+                    'text' => 'Export',
+                    'icon' => 'fas fa-download',
+                    'class' => 'btn-outline-success',
+                    'onclick' => 'exportOrders()'
+                ]
+            ],
+            'clear_function' => 'clearFilters()',
+            'refresh_function' => 'refreshOrders()'
+        ]);
+        ?>
+        
         
         <!-- Orders Table -->
         <div class="table-container">

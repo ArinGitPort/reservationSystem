@@ -689,3 +689,8 @@ function showToast(message, type = 'info', duration = 4000) {
         this.parentElement.remove();
     }, { once: true });
 }
+
+// Export orders function
+function exportOrders() {
+    showToast('Export functionality coming soon!', 'info');
+}
