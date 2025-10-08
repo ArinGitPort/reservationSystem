@@ -717,7 +717,7 @@ body {
     right: 2rem;
     width: 60px;
     height: 60px;
-    background: #667eea;
+    background: #343A40;
     color: white;
     border: none;
     border-radius: 50%;
@@ -732,7 +732,7 @@ body {
 }
 
 .cart-toggle:hover {
-    background: #5a6fd8;
+    background: #343A40;
     transform: scale(1.1);
 }
 
@@ -782,7 +782,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #667eea;
+    background: #343A40;
     color: white;
 }
 
