@@ -1,19 +1,19 @@
 <?php 
-include '../includes/header.php'; 
+// Set page title before including header
+$page_title = 'Menu - Ellen\'s Food House';
+
+// Include required database functions
 require_once '../config/db_model.php';
 
+// Get menu items
 $getAllMenuItems = fetch('menu', '', 'is_best_seller DESC, name ASC');
 $menuItems = $getAllMenuItems;
+
+// Include the header (which contains opening HTML tags)
+include '../includes/header.php'; 
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Menu - Ellen's Food House</title>
-    <link rel="stylesheet" href="../assets/css/menu.css">
-</head>
-<body>
+
+<!-- Main Content -->
 
 <!-- Main Menu Content -->
 <main class="main-content">
@@ -54,7 +54,9 @@ $menuItems = $getAllMenuItems;
                     <div class="menu-item <?php echo $item['is_best_seller'] ? 'featured best-seller' : 'regular'; ?>" 
                          data-name="<?php echo strtolower(htmlspecialchars($item['name'])); ?>"
                          data-category="<?php echo $item['is_best_seller'] ? 'best-seller' : 'regular'; ?>"
-                         data-index="<?php echo $index; ?>">
+                         data-index="<?php echo $index; ?>"
+                         data-menu-id="<?php echo $item['menu_id']; ?>"
+                         data-price="<?php echo $item['price']; ?>">
                         <?php if ($item['image_path']): ?>
                             <div class="item-image" onclick="openModal('<?php echo htmlspecialchars($item['image_path']); ?>', '<?php echo htmlspecialchars($item['name']); ?>', '<?php echo number_format($item['price'], 2); ?>')">
                                 <img src="../uploads/menu/<?php echo htmlspecialchars($item['image_path']); ?>" 
@@ -67,6 +69,16 @@ $menuItems = $getAllMenuItems;
                         <div class="item-content">
                             <h3 class="item-name"><?php echo htmlspecialchars($item['name']); ?></h3>
                             <p class="item-price">₱<?php echo number_format($item['price'], 2); ?></p>
+                            <div class="item-actions">
+                                <div class="quantity-controls">
+                                    <button class="qty-btn minus" onclick="changeQuantity(<?php echo $item['menu_id']; ?>, -1)">-</button>
+                                    <span class="quantity" id="qty-<?php echo $item['menu_id']; ?>">0</span>
+                                    <button class="qty-btn plus" onclick="changeQuantity(<?php echo $item['menu_id']; ?>, 1)">+</button>
+                                </div>
+                                <button class="add-to-cart-btn" onclick="addToCart(<?php echo $item['menu_id']; ?>, '<?php echo addslashes($item['name']); ?>', <?php echo $item['price']; ?>, '<?php echo $item['image_path']; ?>')">
+                                    <i class="fas fa-cart-plus"></i> Add to Cart
+                                </button>
+                            </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -96,6 +108,226 @@ $menuItems = $getAllMenuItems;
     </section>
     <?php endif; ?>
 </main>
+
+<!-- Shopping Cart Sidebar -->
+<div id="cartSidebar" class="cart-sidebar">
+    <div class="cart-header">
+        <h3><i class="fas fa-shopping-cart"></i> Your Order</h3>
+        <button class="cart-close" onclick="toggleCart()">&times;</button>
+    </div>
+    <div class="cart-body">
+        <div id="cartItems" class="cart-items">
+            <!-- Cart items will be populated here -->
+        </div>
+        <div id="emptyCart" class="empty-cart">
+            <i class="fas fa-shopping-cart"></i>
+            <p>Your cart is empty</p>
+            <small>Add items from the menu to get started</small>
+        </div>
+    </div>
+    <div class="cart-footer">
+        <div class="cart-total">
+            <strong>Total: ₱<span id="cartTotal">0.00</span></strong>
+        </div>
+        <button id="checkoutBtn" class="checkout-btn" onclick="openCheckoutModal()" disabled>
+            <i class="fas fa-credit-card"></i> Checkout
+        </button>
+    </div>
+</div>
+
+<!-- Order Success Modal -->
+<div id="orderSuccessModal" class="success-modal">
+    <div class="success-content">
+        <div class="success-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <h2>Order Placed Successfully!</h2>
+        <div class="order-details">
+            <p><strong>Order Number:</strong> <span id="orderNumber"></span></p>
+            <p><strong>Customer:</strong> <span id="customerName"></span></p>
+            <p><strong>Total Amount:</strong> ₱<span id="orderTotal"></span></p>
+        </div>
+        <p class="success-message">Payment successful! Your order has been confirmed and is now being processed. We'll notify you when it's ready!</p>
+        <div class="success-actions">
+            <button class="btn-primary" onclick="closeSuccessModal()">Continue Shopping</button>
+        </div>
+    </div>
+</div>
+
+<!-- Cart Toggle Button -->
+<button id="cartToggle" class="cart-toggle" onclick="toggleCart()">
+    <i class="fas fa-shopping-cart"></i>
+    <span id="cartCount" class="cart-count">0</span>
+</button>
+
+<!-- Checkout Modal -->
+<div id="checkoutModal" class="checkout-modal">
+    <div class="checkout-content">
+        <div class="checkout-header">
+            <h3><i class="fas fa-receipt"></i> Checkout</h3>
+            <button class="modal-close" onclick="closeCheckoutModal()">&times;</button>
+        </div>
+        <form id="checkoutForm" onsubmit="processOrder(event)">
+            <div class="checkout-body">
+                <div class="customer-info">
+                    <h4>Customer Information</h4>
+                    <div class="form-group">
+                        <label for="customerName">Full Name *</label>
+                        <input type="text" id="customerName" name="customer_name" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="customerPhone">Phone *</label>
+                            <input type="tel" id="customerPhone" name="customer_phone" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="customerEmail">Email</label>
+                            <input type="email" id="customerEmail" name="customer_email">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="order-type">
+                    <h4>Order Type</h4>
+                    <div class="order-type-options">
+                        <label class="radio-option">
+                            <input type="radio" name="order_type" value="dine-in" checked>
+                            <span class="radio-label">
+                                <i class="fas fa-utensils"></i>
+                                <strong>Dine In</strong>
+                                <small>Eat at the restaurant</small>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="order_type" value="takeout">
+                            <span class="radio-label">
+                                <i class="fas fa-shopping-bag"></i>
+                                <strong>Takeout</strong>
+                                <small>Pick up your order</small>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="order_type" value="delivery">
+                            <span class="radio-label">
+                                <i class="fas fa-truck"></i>
+                                <strong>Delivery</strong>
+                                <small>We'll deliver to you</small>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="delivery-address" id="deliveryAddress" style="display: none;">
+                    <h4>Delivery Address</h4>
+                    <div class="form-group">
+                        <label for="address">Address *</label>
+                        <textarea id="address" name="delivery_address" rows="3" placeholder="Enter your complete address"></textarea>
+                    </div>
+                </div>
+                
+                <div class="special-instructions">
+                    <h4>Special Instructions</h4>
+                    <div class="form-group">
+                        <textarea name="special_instructions" placeholder="Any special requests or allergies?"></textarea>
+                    </div>
+                </div>
+                
+                <div class="payment-method">
+                    <h4><i class="fas fa-credit-card me-2"></i>Payment Method</h4>
+                    <div class="payment-options">
+                        <div class="radio-option">
+                            <input type="radio" id="cash" name="payment_method" value="cash" checked>
+                            <label for="cash" class="radio-label">
+                                <i class="fas fa-money-bill-wave"></i>
+                                <strong>Cash Payment</strong>
+                                <small>Pay when you receive your order</small>
+                            </label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="gcash" name="payment_method" value="gcash">
+                            <label for="gcash" class="radio-label">
+                                <i class="fas fa-mobile-alt"></i>
+                                <strong>GCash</strong>
+                                <small>Pay via GCash mobile wallet</small>
+                            </label>
+                        </div>
+                        <div class="radio-option">
+                            <input type="radio" id="card" name="payment_method" value="card">
+                            <label for="card" class="radio-label">
+                                <i class="fas fa-credit-card"></i>
+                                <strong>Credit/Debit Card</strong>
+                                <small>Secure card payment</small>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Payment Details Section -->
+                    <div id="paymentDetails" class="payment-details" style="display: none;">
+                        <!-- GCash Payment -->
+                        <div id="gcashDetails" class="payment-form" style="display: none;">
+                            <h5>GCash Payment</h5>
+                            <div class="form-group">
+                                <label>Mobile Number</label>
+                                <input type="tel" class="form-control" placeholder="09XXXXXXXXX" maxlength="11">
+                            </div>
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                You will receive an SMS notification to complete the payment.
+                            </div>
+                        </div>
+                        
+                        <!-- Card Payment -->
+                        <div id="cardDetails" class="payment-form" style="display: none;">
+                            <h5>Card Payment</h5>
+                            <div class="row">
+                                <div class="col-12">
+                                    <div class="form-group">
+                                        <label>Card Number</label>
+                                        <input type="text" class="form-control" placeholder="1234 5678 9012 3456" maxlength="19">
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="form-group">
+                                        <label>Expiry Date</label>
+                                        <input type="text" class="form-control" placeholder="MM/YY" maxlength="5">
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="form-group">
+                                        <label>CVV</label>
+                                        <input type="text" class="form-control" placeholder="123" maxlength="3">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="alert alert-success">
+                                <i class="fas fa-shield-alt me-2"></i>
+                                Your payment information is secure and encrypted.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="order-summary">
+                    <h4><i class="fas fa-receipt me-2"></i>Order Summary</h4>
+                    <div id="checkoutItems" class="checkout-items">
+                        <!-- Order items will be populated here -->
+                    </div>
+                    <div class="checkout-total">
+                        <strong>Total: ₱<span id="checkoutTotal">0.00</span></strong>
+                    </div>
+                </div>
+            </div>
+            <div class="checkout-footer">
+                <button type="button" class="btn-secondary" onclick="closeCheckoutModal()">
+                    <i class="fas fa-times me-2"></i>Cancel
+                </button>
+                <button type="submit" class="btn-primary" id="processPaymentBtn">
+                    <i class="fas fa-credit-card me-2"></i>Process Payment
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <!-- Image Modal -->
 <div id="imageModal" class="image-modal">

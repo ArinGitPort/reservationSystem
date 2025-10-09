@@ -1,11 +1,15 @@
 <?php
-require_once '../../config/db_model.php';
+// Include the CustomerController
+require_once '../../controllers/CustomerController.php';
 
-// Handle form submissions
+// Initialize controller and handle requests
+$customerController = new CustomerController();
+$customerController->handleRequest();
+
+// Handle GET parameters for messages (after redirect)
 $message = '';
 $messageType = '';
 
-// Handle GET parameters for messages (after redirect)
 if (isset($_GET['message']) && isset($_GET['type'])) {
     $message = urldecode($_GET['message']);
     $messageType = $_GET['type'];
@@ -18,119 +22,12 @@ if (isset($_GET['message']) && isset($_GET['type'])) {
     </script>";
 }
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (isset($_POST['action'])) {
-        switch ($_POST['action']) {
-            case 'add_customer':
-                $firstName = $_POST['first_name'];
-                $lastName = $_POST['last_name'];
-                $email = $_POST['email'];
-                $phone = $_POST['phone'];
-                
-                // Prepare data for insertion using generic save function
-                $customerData = [
-                    'first_name' => $firstName,
-                    'last_name' => $lastName,
-                    'email' => $email,
-                    'phone' => $phone,
-                    'image_path' => ''
-                ];
-                
-                // Insert customer with automatic image handling using your enhanced save function
-                $customerId = save('customers', $customerData, 'profile_image', '../../uploads/profiles/');
-                
-                if ($customerId) {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Customer added successfully!", "success");
-                } else {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to add customer. Email might already exist.", "error");
-                }
-                break;
-                
-            case 'update_customer':
-                $id = $_POST['customer_id'];
-                $firstName = $_POST['first_name'];
-                $lastName = $_POST['last_name'];
-                $email = $_POST['email'];
-                $phone = $_POST['phone'];
-                
-                // Prepare update data using generic update function
-                $updateData = [
-                    'first_name' => $firstName,
-                    'last_name' => $lastName,
-                    'email' => $email,
-                    'phone' => $phone
-                ];
-                
-                // Handle profile image upload if provided
-                if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] == 0) {
-                    // Get old image to delete it if extension changed
-                    $oldCustomerData = fetch('customers', "id = $id");
-                    $oldCustomer = !empty($oldCustomerData) ? $oldCustomerData[0] : null;
-                    
-                    $extension = strtolower(pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION));
-                    $newFilename = $id . '.' . $extension;
-                    
-                    // Validate file type
-                    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-                    $fileType = $_FILES['profile_image']['type'];
-                    if (in_array($fileType, $allowedTypes)) {
-                        // Create directory if it doesn't exist
-                        if (!is_dir('../../uploads/profiles/')) {
-                            mkdir('../../uploads/profiles/', 0755, true);
-                        }
-                        
-                        // Delete old image if it has different extension
-                        if ($oldCustomer && $oldCustomer['image_path'] && $oldCustomer['image_path'] !== $newFilename) {
-                            $oldImagePath = "../../uploads/profiles/" . $oldCustomer['image_path'];
-                            if (file_exists($oldImagePath)) {
-                                unlink($oldImagePath);
-                            }
-                        }
-                        
-                        // Move uploaded file
-                        if (move_uploaded_file($_FILES['profile_image']['tmp_name'], '../../uploads/profiles/' . $newFilename)) {
-                            // Add image path to update data
-                            $updateData['image_path'] = $newFilename;
-                        }
-                    }
-                }
-                
-                // Update customer using generic update function
-                if (update('customers', $updateData, "id = $id")) {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Customer updated successfully!", "success");
-                } else {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to update customer.", "error");
-                }
-                break;
-                
-            case 'delete_customer':
-                $id = $_POST['customer_id'];
-                
-                // Get image filename from DB using generic fetch function
-                $customerData = fetch('customers', "id = $id");
-                $customer = !empty($customerData) ? $customerData[0] : null;
-                $imagePath = $customer ? $customer['image_path'] : '';
-                
-                // Delete from database using generic delete function
-                if (delete("customers", $id)) {
-                    // Delete profile image file if exists
-                    if ($imagePath) {
-                        $filePath = "../../uploads/profiles/" . $imagePath;
-                        if (file_exists($filePath)) {
-                            unlink($filePath);
-                        }
-                    }
-                    redirect_with_message($_SERVER['PHP_SELF'], "Customer deleted successfully!", "success");
-                } else {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete customer.", "error");
-                }
-                break;
-        }
-    }
-}
+// Get all customers for display
+$customers = $customerController->getAllCustomers();
 
-// Get all customers for display using generic fetch function
-$customers = fetch('customers', '', 'created_at DESC');
+// SQL Query for display_all function
+$customerQuery = "SELECT id, first_name, last_name, email, phone, image_path, created_at FROM customers ORDER BY created_at DESC";
+$columnMappings = []; // Not used for account_management special handling
 ?>
 
 <!DOCTYPE html>
@@ -173,6 +70,31 @@ $customers = fetch('customers', '', 'created_at DESC');
             </button>
         </div>
         
+        <!-- Search and Filter Component -->
+        <?php
+        include '../../includes/search_filter.php';
+        renderSearchFilter([
+            'placeholder' => 'Search by name, email, or phone...',
+            'search_label' => 'Search Customers',
+            'filters' => [
+                'date_added' => [
+                    'label' => 'Date Added',
+                    'type' => 'daterange'
+                ]
+            ],
+            'additional_buttons' => [
+                [
+                    'text' => 'Export CSV',
+                    'icon' => 'fas fa-download',
+                    'class' => 'btn-outline-success',
+                    'onclick' => 'exportCustomers()'
+                ]
+            ],
+            'clear_function' => 'clearCustomerFilters()',
+            'refresh_function' => 'refreshCustomers()'
+        ]);
+        ?>
+        
         <div class="table-container">
             <table class="table table-hover">
                 <thead>
@@ -187,45 +109,10 @@ $customers = fetch('customers', '', 'created_at DESC');
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($customers as $index => $customer): ?>
-                    <tr>
-                        <td><?php echo $index + 1; ?></td>
-                        <td>
-                            <?php if ($customer['image_path']): ?>
-                                <img src="../../uploads/profiles/<?php echo htmlspecialchars($customer['image_path']); ?>" 
-                                     alt="<?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?>" 
-                                     style="width: 50px; height: 50px; object-fit: cover; border-radius: 50%;">
-                            <?php else: ?>
-                                <div style="width: 50px; height: 50px; background: #f8f9fa; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                                    <i class="fas fa-user text-muted"></i>
-                                </div>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <div class="fw-bold"><?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?></div>
-                        </td>
-                        <td><?php echo htmlspecialchars($customer['email']); ?></td>
-                        <td><?php echo htmlspecialchars($customer['phone'] ?: 'N/A'); ?></td>
-                        <td>
-                            <div><?php echo date('d M Y', strtotime($customer['created_at'])); ?></div>
-                            <small class="text-muted"><?php echo date('h:i A', strtotime($customer['created_at'])); ?></small>
-                        </td>
-                        <td>
-                            <div class="action-buttons">
-                                <button class="btn btn-sm btn-outline-dark" 
-                                        onclick="editCustomer(<?php echo $customer['id']; ?>, '<?php echo htmlspecialchars($customer['first_name']); ?>', '<?php echo htmlspecialchars($customer['last_name']); ?>', '<?php echo htmlspecialchars($customer['email']); ?>', '<?php echo htmlspecialchars($customer['phone']); ?>')"
-                                        data-bs-toggle="modal" data-bs-target="#editCustomerModal">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button class="btn btn-sm btn-outline-danger" 
-                                        onclick="confirmDelete('customer', <?php echo $customer['id']; ?>)"
-                                        data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
+                    <?php
+                    // Using clean variables defined at top of file
+                    display_all($customerQuery, $columnMappings, 'account_management.php', 'table');
+                    ?>
                 </tbody>
             </table>
         </div>
@@ -371,6 +258,46 @@ $customers = fetch('customers', '', 'created_at DESC');
         function toggleSidebar() {
             document.querySelector('.sidebar').classList.toggle('show');
         }
+        
+        // Customer management functions
+        function clearCustomerFilters() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('date_added-from').value = '';
+            document.getElementById('date_added-to').value = '';
+            // Reload page to show all customers
+            window.location.reload();
+        }
+        
+        function refreshCustomers() {
+            window.location.reload();
+        }
+        
+        function exportCustomers() {
+            // Placeholder for export functionality
+            alert('Export functionality will be implemented soon!');
+        }
+        
+        // Search functionality (basic client-side filtering for now)
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('search-input');
+            const tableBody = document.querySelector('tbody');
+            
+            if (searchInput && tableBody) {
+                searchInput.addEventListener('input', function() {
+                    const searchTerm = this.value.toLowerCase();
+                    const rows = tableBody.querySelectorAll('tr');
+                    
+                    rows.forEach(row => {
+                        const text = row.textContent.toLowerCase();
+                        if (text.includes(searchTerm)) {
+                            row.style.display = '';
+                        } else {
+                            row.style.display = 'none';
+                        }
+                    });
+                });
+            }
+        });
         
         // Auto-dismiss alerts after 5 seconds
         document.addEventListener('DOMContentLoaded', function() {

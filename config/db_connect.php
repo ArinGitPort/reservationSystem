@@ -1,8 +1,9 @@
 <?php
-// Database configuration
+
+
 $host = 'localhost';
 $username = 'root';
-$password = '1234';
+$password = 'password';
 $database = 'ellenfoodhouse';
 
 // Create connection

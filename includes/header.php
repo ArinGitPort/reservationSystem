@@ -1,125 +1,59 @@
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/css/header.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-<header>
-    <nav class="navbar">
-        <div class="logo">Ellens Food House</div>
+<?php
+$page_title = isset($page_title) ? $page_title : 'Ellen\'s Food House';
+$current_page = basename($_SERVER['PHP_SELF']);
+$is_home = ($current_page == 'home.php');
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?php echo htmlspecialchars($page_title); ?></title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Header CSS - Always included -->
+    <link rel="stylesheet" href="../assets/css/header_new.css">
+    
+    <!-- Page-specific CSS -->
+    <?php if ($is_home): ?>
+    <link rel="stylesheet" href="../assets/css/home_new.css">
+    <?php elseif ($current_page == 'menu.php'): ?>
+    <link rel="stylesheet" href="../assets/css/menu.css">
+    <?php endif; ?>
+</head>
+<body>
+
+<!-- Header -->
+<header class="main-header">
+    <div class="header-container">
+        <a href="../pages/home.php" class="logo">
+            <img src="../assets/images/mainlogo.png" alt="Ellen's Food House Logo">
+            <span>Ellen's Food House</span>
+        </a>
         
-        <!-- Mobile Menu Toggle -->
-        <button class="mobile-menu-toggle" aria-label="Toggle Menu">
-            <span class="hamburger-line"></span>
-            <span class="hamburger-line"></span>
-            <span class="hamburger-line"></span>
-        </button>
+        <nav class="main-nav">
+            <ul>
+                <li><a href="../pages/home.php" class="<?php echo $is_home ? 'active' : ''; ?>">Home</a></li>
+                <li><a href="../pages/menu.php" class="<?php echo $current_page == 'menu.php' ? 'active' : ''; ?>">Menu</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </nav>
         
-        <!-- Navigation Links -->
-        <ul class="nav-links">
-            <li><a href="../pages/home.php">Home</a></li>
-            <li><a href="../pages/menu.php">Menu</a></li>
-            <li><a href="#about">About</a></li>
-            <li><a href="#contact">Contact</a></li>
-        </ul>
-        
-        <!-- Mobile Menu Overlay -->
-        <div class="mobile-menu-overlay"></div>
-    </nav>
+        <div class="header-actions">
+            <a href="../pages/menu.php" class="btn btn-primary">
+                <i class="fas fa-utensils"></i>
+                Order Now
+            </a>
+        </div>
+    </div>
 </header>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const mobileToggle = document.querySelector('.mobile-menu-toggle');
-    const navLinks = document.querySelector('.nav-links');
-    const overlay = document.querySelector('.mobile-menu-overlay');
-    const body = document.body;
-    
-    function toggleMobileMenu() {
-        const isActive = navLinks.classList.contains('active');
-        
-        if (isActive) {
-            closeMobileMenu();
-        } else {
-            openMobileMenu();
-        }
-    }
-    
-    function openMobileMenu() {
-        mobileToggle.classList.add('active');
-        navLinks.classList.add('active');
-        overlay.classList.add('active');
-        body.classList.add('mobile-menu-open');
-        
-        // Ensure nav-links is visible
-        navLinks.style.display = 'flex';
-        
-        // Add slight delay for animation
-        setTimeout(() => {
-            navLinks.style.visibility = 'visible';
-            navLinks.style.opacity = '1';
-        }, 10);
-    }
-    
-    function closeMobileMenu() {
-        mobileToggle.classList.remove('active');
-        navLinks.classList.remove('active');
-        overlay.classList.remove('active');
-        body.classList.remove('mobile-menu-open');
-        
-        // Hide with animation
-        navLinks.style.visibility = 'hidden';
-        navLinks.style.opacity = '0';
-        
-        // Completely hide after animation
-        setTimeout(() => {
-            navLinks.style.display = 'none';
-        }, 300);
-    }
-    
-    // Event listeners
-    if (mobileToggle) {
-        mobileToggle.addEventListener('click', toggleMobileMenu);
-    }
-    
-    if (overlay) {
-        overlay.addEventListener('click', closeMobileMenu);
-    }
-    
-    // Close menu when clicking on a link
-    navLinks.querySelectorAll('a').forEach(link => {
-        link.addEventListener('click', closeMobileMenu);
-    });
-    
-    // Close menu on escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeMobileMenu();
-        }
-    });
-    
-    // Handle window resize
-    window.addEventListener('resize', function() {
-        if (window.innerWidth > 768) {
-            // Reset mobile menu on desktop
-            closeMobileMenu();
-            navLinks.style.display = '';
-            navLinks.style.visibility = '';
-            navLinks.style.opacity = '';
-        } else {
-            // Ensure menu is hidden on mobile
-            if (!navLinks.classList.contains('active')) {
-                navLinks.style.display = 'none';
-                navLinks.style.visibility = 'hidden';
-                navLinks.style.opacity = '0';
-            }
-        }
-    });
-    
-    // Initial setup for mobile
-    if (window.innerWidth <= 768) {
-        navLinks.style.display = 'none';
-        navLinks.style.visibility = 'hidden';
-        navLinks.style.opacity = '0';
-    }
-});
-</script>
