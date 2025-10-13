@@ -19,9 +19,10 @@ CREATE TABLE reservations (
     reservation_time TIME NOT NULL,
     party_size INT NOT NULL,
     table_number INT,
-    status ENUM('pending', 'confirmed', 'cancelled') DEFAULT 'pending',
+    status ENUM('pending', 'confirmed', 'seated', 'completed', 'cancelled', 'no-show') DEFAULT 'pending',
     special_requests TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (customer_id) REFERENCES customers(id)
 );
 
@@ -94,3 +95,9 @@ INSERT INTO menu (name, price, image_path, is_best_seller) VALUES
 ('Vegetable Lumpia', 100.00, '8.jpg', 0);
 
 ALTER TABLE banners ADD COLUMN event_date DATE NULL AFTER description;
+
+-- Update reservation status enum to include all statuses used in the system
+ALTER TABLE reservations MODIFY COLUMN status ENUM('pending', 'confirmed', 'seated', 'completed', 'cancelled', 'no-show') DEFAULT 'pending';
+
+-- Add updated_at column to reservations table
+ALTER TABLE reservations ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;

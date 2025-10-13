@@ -343,47 +343,47 @@ function renderSearchFilter($config = []) {
             <!-- Action Buttons Group -->
             <div class="<?php echo $buttonGroupCol; ?>">
                 <label class="form-label mb-1 d-block">&nbsp;</label>
-                <div class="btn-group-custom d-flex gap-1 flex-wrap">
+                <div class="btn-group-custom d-flex gap-1">
                     <!-- Filter Button -->
-                    <button type="submit" class="btn btn-primary btn-sm flex-fill">
-                        <i class="fas fa-search me-1"></i>Filter
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-search"></i><span class="d-none d-lg-inline ms-1">Filter</span>
                     </button>
                     
                     <!-- Clear Button -->
-                    <button type="button" class="btn btn-outline-secondary btn-sm flex-fill" onclick="<?php echo $config['clear_function']; ?>">
-                        <i class="fas fa-times me-1"></i>Clear
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="<?php echo $config['clear_function']; ?>">
+                        <i class="fas fa-times"></i><span class="d-none d-lg-inline ms-1">Clear</span>
                     </button>
                     
                     <!-- Refresh Button -->
-                    <button type="button" class="btn btn-outline-info btn-sm flex-fill" onclick="<?php echo $config['refresh_function']; ?>">
-                        <i class="fas fa-refresh me-1"></i>Refresh
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="<?php echo $config['refresh_function']; ?>">
+                        <i class="fas fa-refresh"></i><span class="d-none d-lg-inline ms-1">Refresh</span>
                     </button>
                     
                     <!-- Additional Buttons -->
                     <?php foreach ($config['additional_buttons'] as $button): ?>
                         <?php if (isset($button['type']) && $button['type'] === 'pdf_export'): ?>
                             <!-- PDF Export Button with integrated functionality -->
-                            <form method="POST" style="display: inline;" class="flex-fill">
+                            <form method="POST" style="display: contents;">
                                 <input type="hidden" name="pdf_export_action" value="generate">
                                 <input type="hidden" name="pdf_config" value="<?php echo htmlspecialchars(json_encode($button)); ?>">
                                 <button type="submit" 
-                                        class="btn <?php echo $button['class'] ?? 'btn-outline-danger'; ?> btn-sm w-100">
+                                        class="btn <?php echo $button['class'] ?? 'btn-outline-danger'; ?> btn-sm">
                                     <?php if (isset($button['icon'])): ?>
-                                        <i class="<?php echo $button['icon']; ?> me-1"></i>
+                                        <i class="<?php echo $button['icon']; ?>"></i>
                                     <?php endif; ?>
-                                    <?php echo htmlspecialchars($button['text']); ?>
+                                    <span class="d-none d-lg-inline ms-1"><?php echo htmlspecialchars($button['text']); ?></span>
                                 </button>
                             </form>
                         <?php else: ?>
                             <!-- Regular Button -->
                             <button type="button" 
-                                    class="btn <?php echo $button['class'] ?? 'btn-outline-primary'; ?> btn-sm flex-fill" 
+                                    class="btn <?php echo $button['class'] ?? 'btn-outline-primary'; ?> btn-sm" 
                                     <?php echo isset($button['onclick']) ? 'onclick="' . $button['onclick'] . '"' : ''; ?>
                                     <?php echo isset($button['id']) ? 'id="' . $button['id'] . '"' : ''; ?>>
                                 <?php if (isset($button['icon'])): ?>
-                                    <i class="<?php echo $button['icon']; ?> me-1"></i>
+                                    <i class="<?php echo $button['icon']; ?>"></i>
                                 <?php endif; ?>
-                                <?php echo htmlspecialchars($button['text']); ?>
+                                <span class="d-none d-lg-inline ms-1"><?php echo htmlspecialchars($button['text']); ?></span>
                             </button>
                         <?php endif; ?>
                     <?php endforeach; ?>
@@ -433,15 +433,30 @@ function renderSearchFilter($config = []) {
         
         .btn-group-custom {
             min-height: 32px;
+            display: flex;
+            align-items: stretch;
         }
         
         .btn-group-custom .btn {
             font-size: 0.875rem;
-            padding: 0.375rem 0.75rem;
+            padding: 0.375rem 0.5rem;
+            flex: 1;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 60px;
         }
         
         .btn-group-custom .btn i {
             font-size: 0.8rem;
+            margin-right: 0.25rem;
+        }
+        
+        .btn-group-custom .btn:only-child {
+            flex: 0 1 auto;
         }
         
         @media (max-width: 992px) {
@@ -449,14 +464,13 @@ function renderSearchFilter($config = []) {
                 margin-bottom: 0.75rem;
             }
             
-            .btn-group-custom {
-                flex-direction: column;
-                gap: 0.5rem !important;
+            .btn-group-custom .btn span {
+                display: none !important;
             }
             
             .btn-group-custom .btn {
-                flex: 1 1 auto;
-                min-width: 100px;
+                min-width: 40px;
+                padding: 0.375rem 0.5rem;
             }
         }
         
@@ -469,14 +483,20 @@ function renderSearchFilter($config = []) {
                 --bs-gutter-x: 0.5rem;
             }
             
+            .btn-group-custom {
+                flex-wrap: wrap;
+                gap: 0.25rem !important;
+            }
+            
             .btn-group-custom .btn {
                 font-size: 0.8rem;
-                padding: 0.25rem 0.5rem;
-                min-width: 80px;
+                padding: 0.25rem 0.4rem;
+                min-width: 36px;
             }
             
             .btn-group-custom .btn i {
                 font-size: 0.75rem;
+                margin-right: 0 !important;
             }
         }
         
@@ -487,9 +507,13 @@ function renderSearchFilter($config = []) {
             }
             
             .btn-group-custom {
-                display: grid;
-                grid-template-columns: repeat(2, 1fr);
-                gap: 0.5rem;
+                justify-content: space-between;
+                gap: 0.25rem !important;
+            }
+            
+            .btn-group-custom .btn {
+                flex: 1;
+                max-width: calc(25% - 0.2rem);
             }
         }
     </style>
