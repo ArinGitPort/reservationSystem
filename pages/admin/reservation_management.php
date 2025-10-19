@@ -460,7 +460,6 @@ $columnMappings = []; // Not used for reservation_management special handling
         </div>
     </div>
     
-    <!-- Hidden form for status updates -->
     <form method="POST" id="statusUpdateForm" style="display: none;">
         <input type="hidden" name="action" value="update_reservation_status">
         <input type="hidden" name="reservation_id" id="status_reservation_id">

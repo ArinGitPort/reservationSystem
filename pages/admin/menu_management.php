@@ -1,22 +1,16 @@
 <?php
-require_once '../../config/db_connect.php';
-require_once '../../config/db_model.php';
+// Include the MenuManagementController
+require_once '../../controllers/MenuManagementController.php';
+require_once '../../includes/search_filter.php';
 
-// ===== CONFIGURATION VARIABLES (Top of file for clean management) =====
-// SQL Queries
-$menuQuery = "SELECT menu_id, name, price, image_path, is_best_seller FROM menu ORDER BY name ASC";
-$columnMappings = []; // Not used for menu_management special handling
+// Initialize controller and handle requests
+$menuController = new MenuManagementController();
+$menuController->handleRequest();
 
-// Save function parameters
-$menuTable = 'menu';
-$menuImageField = 'menu_image';
-// Upload directory auto-detected by save() function based on table name
-
-// Handle form submissions
+// Handle GET parameters for messages (after redirect)
 $message = '';
 $messageType = '';
 
-// Handle GET parameters for messages (after redirect)
 if (isset($_GET['message']) && isset($_GET['type'])) {
     $message = urldecode($_GET['message']);
     $messageType = $_GET['type'];
@@ -29,116 +23,29 @@ if (isset($_GET['message']) && isset($_GET['type'])) {
     </script>";
 }
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (isset($_POST['action'])) {
-        switch ($_POST['action']) {
+// Get filter parameters
+$search = $_GET['search'] ?? '';
+$bestSeller = $_GET['best_seller'] ?? 'all';
 
-            case 'add_menu_item':
-                $name = $_POST['name'];
-                $price = $_POST['price'];
-                $isBestSeller = isset($_POST['is_best_seller']) ? 1 : 0;
-                
-                // Prepare data for insertion
-                $menuData = [
-                    'name' => $name,
-                    'price' => $price,
-                    'image_path' => '',
-                    'is_best_seller' => $isBestSeller
-                ];
-                
-                // Insert menu item with automatic image handling
-                $menuId = save($menuTable, $menuData, $menuImageField);
-                
-                if ($menuId) {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Menu item added successfully!", "success");
-                } else {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to save menu item to database.", "error");
-                }
-                break;
-                
-            case 'edit_menu_item':
-                $menuId = $_POST['menu_id'];
-                $name = $_POST['name'];
-                $price = $_POST['price'];
-                $isBestSeller = isset($_POST['is_best_seller']) ? 1 : 0;
-                
-                // Prepare update data
-                $updateData = [
-                    'name' => $name,
-                    'price' => $price,
-                    'is_best_seller' => $isBestSeller
-                ];
-                
-                // Handle file upload if new image provided
-                if (isset($_FILES['menu_image']) && $_FILES['menu_image']['error'] == 0) {
-                    // Get old image to delete it if extension changed
-                    $oldItemData = fetch('menu', "menu_id = $menuId");
-                    $oldItem = !empty($oldItemData) ? $oldItemData[0] : null;
-                    
-                    $extension = strtolower(pathinfo($_FILES['menu_image']['name'], PATHINFO_EXTENSION));
-                    $newFilename = $menuId . '.' . $extension;
-                    
-                    // Validate file type
-                    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-                    $fileType = $_FILES['menu_image']['type'];
-                    if (in_array($fileType, $allowedTypes)) {
-                        // Create directory if it doesn't exist
-                        if (!is_dir('../../uploads/menu/')) {
-                            mkdir('../../uploads/menu/', 0755, true);
-                        }
-                        
-                        // Delete old image if it has different extension
-                        if ($oldItem && $oldItem['image_path'] && $oldItem['image_path'] !== $newFilename) {
-                            $oldImagePath = "../../uploads/menu/" . $oldItem['image_path'];
-                            if (file_exists($oldImagePath)) {
-                                unlink($oldImagePath);
-                            }
-                        }
-                        
-                        // Move uploaded file
-                        if (move_uploaded_file($_FILES['menu_image']['tmp_name'], '../../uploads/menu/' . $newFilename)) {
-                            // Add image path to update data
-                            $updateData['image_path'] = $newFilename;
-                        }
-                    }
-                }
-                
-                // Update menu item using generic update function
-                if (update('menu', $updateData, "menu_id = $menuId")) {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Menu item updated successfully!", "success");
-                } else {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to update menu item.", "error");
-                }
-                break;
-                
-            case 'delete_menu_item':
-                $menuId = $_POST['menu_id'];
-                
-                // Get image filename from DB using generic fetch function
-                $itemData = fetch('menu', "menu_id = $menuId");
-                $item = !empty($itemData) ? $itemData[0] : null;
-                $imagePath = $item ? $item['image_path'] : '';
-                
-                // Delete from database using generic delete function
-                if (delete('menu', $menuId, 'menu_id')) {
-                    // Delete image file if exists using simple unlink
-                    if ($imagePath) {
-                        $filePath = "../../uploads/menu/" . $imagePath;
-                        if (file_exists($filePath)) {
-                            unlink($filePath);
-                        }
-                    }
-                    redirect_with_message($_SERVER['PHP_SELF'], "Menu item deleted successfully!", "success");
-                } else {
-                    redirect_with_message($_SERVER['PHP_SELF'], "Failed to delete menu item.", "error");
-                }
-                break;
-        }
-    }
+// Get data for display
+$menuItems = $menuController->getAllMenuItems($search, 'all', $bestSeller);
+$stats = $menuController->getMenuStatistics();
+
+// Prepare data for PDF export
+$pdfData = [];
+foreach ($menuItems as $item) {
+    $pdfData[] = [
+        'ID' => $item['menu_id'],
+        'Name' => $item['name'],
+        'Price' => '₱' . number_format($item['price'], 2),
+        'Best Seller' => $item['is_best_seller'] ? 'Yes' : 'No',
+        'Image' => $item['image_path'] ? 'Yes' : 'No'
+    ];
 }
 
-// Get all menu items for display using fetch function
-$menuItems = fetch('menu', '', 'menu_id ASC');
+// SQL Query for display_all function (legacy support)
+$menuQuery = "SELECT menu_id, name, price, image_path, is_best_seller FROM menu ORDER BY name ASC";
+$columnMappings = []; // Not used for menu_management special handling
 ?>
 
 <!DOCTYPE html>
@@ -173,7 +80,7 @@ $menuItems = fetch('menu', '', 'menu_id ASC');
             </div>
         <?php endif; ?>
         
-        <!-- Menu Management -->
+        <!-- Page Header -->
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h3><i class="fas fa-utensils me-2"></i>Menu Management</h3>
             <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#addMenuModal">
@@ -181,24 +88,189 @@ $menuItems = fetch('menu', '', 'menu_id ASC');
             </button>
         </div>
         
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>IMAGE</th>
-                    <th>NAME</th>
-                    <th>PRICE</th>
-                    <th>BEST SELLER</th>
-                    <th>MANAGE</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php
-                // Using clean variables defined at top of file
-                display_all($menuQuery, $columnMappings, 'menu_management.php', 'table');
-                ?>
-            </tbody>
-        </table>
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="mb-0"><?php echo $stats['total_items']; ?></h4>
+                                <p class="mb-0">Total Items</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-utensils fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="mb-0"><?php echo $stats['best_sellers']; ?></h4>
+                                <p class="mb-0">Best Sellers</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-star fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="mb-0">₱<?php echo number_format($stats['average_price'], 2); ?></h4>
+                                <p class="mb-0">Average Price</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-calculator fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-dark">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 class="mb-0">₱<?php echo number_format($stats['min_price'], 2); ?> - ₱<?php echo number_format($stats['max_price'], 2); ?></h4>
+                                <p class="mb-0">Price Range</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-chart-line fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Search and Filter Section -->
+        <?php 
+        renderSearchFilter([
+            'placeholder' => 'Search by menu item name or price...',
+            'search_label' => 'Search Menu Items',
+            'filters' => [
+                'best_seller' => [
+                    'label' => 'Best Seller Filter',
+                    'type' => 'select',
+                    'options' => [
+                        'all' => 'All Items',
+                        'yes' => 'Best Sellers Only',
+                        'no' => 'Regular Items Only'
+                    ],
+                    'selected' => $bestSeller
+                ]
+            ],
+            'additional_buttons' => [
+                [
+                    'text' => 'Export PDF',
+                    'icon' => 'fas fa-file-pdf',
+                    'class' => 'btn-outline-danger',
+                    'type' => 'pdf_export',
+                    'data' => $pdfData,
+                    'report_title' => 'Menu Items Report',
+                    'company_name' => 'Ellen\'s Food House',
+                    'stats' => [
+                        'total_items' => ['label' => 'Total Items', 'value' => $stats['total_items']],
+                        'best_sellers' => ['label' => 'Best Sellers', 'value' => $stats['best_sellers']],
+                        'average_price' => ['label' => 'Average Price', 'value' => '₱' . number_format($stats['average_price'], 2)]
+                    ]
+                ]
+            ]
+        ]);
+        ?>
+        
+        <!-- Menu Items Table -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>Menu Items 
+                    <span class="badge bg-secondary ms-2"><?php echo count($menuItems); ?> items</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <?php if (empty($menuItems)): ?>
+                    <div class="text-center py-5">
+                        <i class="fas fa-utensils fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No menu items found matching your criteria.</p>
+                        <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#addMenuModal">
+                            <i class="fas fa-plus me-2"></i>Add First Menu Item
+                        </button>
+                    </div>
+                <?php else: ?>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th width="5%">#</th>
+                                    <th width="15%">IMAGE</th>
+                                    <th width="35%">NAME</th>
+                                    <th width="15%">PRICE</th>
+                                    <th width="15%">BEST SELLER</th>
+                                    <th width="15%">MANAGE</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($menuItems as $index => $item): ?>
+                                <tr>
+                                    <td><?php echo $index + 1; ?></td>
+                                    <td>
+                                        <?php if ($item['image_path']): ?>
+                                            <img src="../../uploads/menu/<?php echo htmlspecialchars($item['image_path']); ?>" 
+                                                 alt="<?php echo htmlspecialchars($item['name']); ?>" 
+                                                 class="img-thumbnail" style="width: 60px; height: 60px; object-fit: cover;">
+                                        <?php else: ?>
+                                            <div class="bg-light d-flex align-items-center justify-content-center" 
+                                                 style="width: 60px; height: 60px; border-radius: 4px;">
+                                                <i class="fas fa-image text-muted"></i>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <strong><?php echo htmlspecialchars($item['name']); ?></strong>
+                                    </td>
+                                    <td>
+                                        <span class="fw-bold text-success">₱<?php echo number_format($item['price'], 2); ?></span>
+                                    </td>
+                                    <td>
+                                        <?php if ($item['is_best_seller']): ?>
+                                            <span class="badge bg-warning text-dark">
+                                                <i class="fas fa-star me-1"></i>Best Seller
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="badge bg-secondary">Regular</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button type="button" class="btn btn-outline-primary" 
+                                                    data-bs-toggle="modal" data-bs-target="#editMenuModal"
+                                                    onclick="editMenuItem(<?php echo htmlspecialchars(json_encode($item)); ?>)">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-outline-danger" 
+                                                    data-bs-toggle="modal" data-bs-target="#confirmDeleteModal"
+                                                    onclick="confirmDelete(<?php echo $item['menu_id']; ?>, '<?php echo htmlspecialchars($item['image_path']); ?>')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
     </div>
     <!-- End Main Content -->
     
@@ -305,34 +377,7 @@ $menuItems = fetch('menu', '', 'menu_id ASC');
     
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <script>
-        function editMenuItem(item) {
-            document.getElementById('edit_menu_id').value = item.menu_id;
-            document.getElementById('edit_name').value = item.name;
-            document.getElementById('edit_price').value = item.price;
-            document.getElementById('edit_is_best_seller').checked = item.is_best_seller == 1;
-        }
-        
-        function confirmDelete(menuId, imagePath) {
-            document.getElementById('deleteMenuId').value = menuId;
-            document.getElementById('deleteImagePath').value = imagePath;
-        }
-        
-        function toggleSidebar() {
-            document.querySelector('.sidebar').classList.toggle('show');
-        }
-        
-        // Auto-dismiss alerts after 5 seconds
-        document.addEventListener('DOMContentLoaded', function() {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(function(alert) {
-                setTimeout(function() {
-                    const bsAlert = new bootstrap.Alert(alert);
-                    bsAlert.close();
-                }, 5000);
-            });
-        });
-    </script>
+    <!-- Menu Management JS -->
+    <script src="../../assets/js/menu_management.js"></script>
 </body>
 </html>
