@@ -123,7 +123,7 @@ include '../includes/header.php';
                     <i class="fas fa-shopping-cart"></i>
                     Order Online
                 </a>
-                <a href="#contact" class="btn btn-outline btn-large">
+                <a href="#contact" class="btn btn-outline2 btn-large">
                     <i class="fas fa-map-marker-alt"></i>
                     Visit Us
                 </a>
