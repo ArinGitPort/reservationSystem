@@ -71,31 +71,26 @@ class AccountManagementController {
         $totalCustomersResult = selectData($this->customerTable, ['COUNT(*) as count']);
         $stats['total_customers'] = $totalCustomersResult ? $totalCustomersResult[0]['count'] : 0;
         
-        // New customers this month - use selectData() with COUNT
-        $newThisMonthResult = selectData($this->customerTable, ['COUNT(*) as count'], ['DATE(created_at) >=' => date('Y-m-01')]);
-        $stats['new_this_month'] = $newThisMonthResult ? $newThisMonthResult[0]['count'] : 0;
+        // New customers this month - use fetch() for date function
+        $firstDayOfMonth = date('Y-m-01');
+        $newThisMonth = fetch($this->customerTable, "DATE(created_at) >= '$firstDayOfMonth'");
+        $stats['new_this_month'] = $newThisMonth ? count($newThisMonth) : 0;
         
         // Active customers (with orders) - use fetch() for complex subquery
         $activeCustomers = fetch($this->customerTable, "id IN (SELECT DISTINCT customer_id FROM orders WHERE customer_id IS NOT NULL)");
         $stats['active_customers'] = $activeCustomers ? count($activeCustomers) : 0;
         
-        // Use selectData() with JOIN for top customer query
-        $topCustomerResult = selectData(
-            'customers c', 
-            ['c.first_name', 'c.last_name', 'COUNT(o.order_id) as order_count'], 
-            [], 
-            'order_count DESC', 
-            1, 
-            0, 
-            ['LEFT JOIN orders o ON c.id = o.customer_id GROUP BY c.id']
-        );
-        
-        if ($topCustomerResult && !empty($topCustomerResult)) {
-            $topCustomer = $topCustomerResult[0];
-            $stats['top_customer'] = $topCustomer['first_name'] . ' ' . $topCustomer['last_name'] . ' (' . $topCustomer['order_count'] . ' orders)';
-        } else {
-            $stats['top_customer'] = 'N/A';
-        }
+        // Top customer by order count - use fetch() for JOIN with GROUP BY
+        global $connection;
+        $topCustomerQuery = "SELECT c.first_name, c.last_name, COUNT(o.order_id) as order_count 
+                           FROM customers c 
+                           LEFT JOIN orders o ON c.id = o.customer_id 
+                           GROUP BY c.id 
+                           ORDER BY order_count DESC 
+                           LIMIT 1";
+        $result = mysqli_query($connection, $topCustomerQuery);
+        $topCustomer = $result ? mysqli_fetch_assoc($result) : null;
+        $stats['top_customer'] = $topCustomer ? $topCustomer['first_name'] . ' ' . $topCustomer['last_name'] . ' (' . $topCustomer['order_count'] . ' orders)' : 'N/A';
         
         return $stats;
     }
