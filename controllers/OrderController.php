@@ -105,16 +105,15 @@ class OrderController {
             $statusCounts = [];
             $statuses = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
             
+            // Use existing selectData() with COUNT for efficiency
             foreach ($statuses as $status) {
-                $orders = fetch('orders', "order_status = '$status'");
-                $statusCounts[$status] = $orders ? count($orders) : 0;
+                $result = selectData('orders', ['COUNT(*) as count'], ['order_status' => $status]);
+                $statusCounts[$status] = $result ? $result[0]['count'] : 0;
             }
             
-            $todayOrders = fetch('orders', "DATE(order_date) = CURDATE()");
-            $todaysData = [
-                'order_count' => $todayOrders ? count($todayOrders) : 0,
-                'total_revenue' => $todayOrders ? array_sum(array_column($todayOrders, 'total_amount')) : 0
-            ];
+            // Use selectData() for today's statistics with aggregate functions
+            $todayStats = selectData('orders', ['COUNT(*) as order_count', 'COALESCE(SUM(total_amount), 0) as total_revenue'], ['DATE(order_date)' => date('Y-m-d')]);
+            $todaysData = $todayStats ? $todayStats[0] : ['order_count' => 0, 'total_revenue' => 0];
             
             echo json_encode(['success' => true, 'statusCounts' => $statusCounts, 'todaysData' => $todaysData]);
         } catch (Exception $e) {
@@ -123,7 +122,7 @@ class OrderController {
     }
     
     /**
-     * Get orders list with filtering - using db_model fetch()
+     * Get orders list with filtering - using selectData() with parameterized conditions
      */
     private static function getOrders() {
         try {
@@ -131,16 +130,26 @@ class OrderController {
             $statusFilter = $_GET['status'] ?? '';
             
             $conditions = [];
-            if ($searchTerm) {
-                $searchTerm = mysqli_real_escape_string($GLOBALS['connection'], $searchTerm);
-                $conditions[] = "(customer_name LIKE '%$searchTerm%' OR customer_email LIKE '%$searchTerm%' OR customer_phone LIKE '%$searchTerm%')";
-            }
-            if ($statusFilter) {
-                $conditions[] = "order_status = '" . mysqli_real_escape_string($GLOBALS['connection'], $statusFilter) . "'";
-            }
             
-            $whereClause = implode(' AND ', $conditions);
-            $orders = fetch('orders', $whereClause, 'order_date DESC');
+            // Use selectData() with parameterized search conditions
+            if ($searchTerm) {
+                $searchPattern = "%$searchTerm%";
+                $conditions['customer_name LIKE'] = $searchPattern;
+                // Note: selectData() handles one condition at a time, so we'll use fetch() for complex OR conditions
+                $whereClause = "(customer_name LIKE '%" . mysqli_real_escape_string($GLOBALS['connection'], $searchTerm) . "%' OR customer_email LIKE '%" . mysqli_real_escape_string($GLOBALS['connection'], $searchTerm) . "%' OR customer_phone LIKE '%" . mysqli_real_escape_string($GLOBALS['connection'], $searchTerm) . "%')";
+                
+                if ($statusFilter) {
+                    $whereClause .= " AND order_status = '" . mysqli_real_escape_string($GLOBALS['connection'], $statusFilter) . "'";
+                }
+                
+                $orders = fetch('orders', $whereClause, 'order_date DESC');
+            } else if ($statusFilter) {
+                // Use selectData() for simple status filter
+                $orders = selectData('orders', ['*'], ['order_status' => $statusFilter], 'order_date DESC');
+            } else {
+                // Use selectData() for all orders
+                $orders = selectData('orders', ['*'], [], 'order_date DESC');
+            }
             
             echo json_encode(['success' => true, 'orders' => $orders ? $orders : []]);
         } catch (Exception $e) {
@@ -382,11 +391,12 @@ class OrderController {
     }
     
     /**
-     * Get or create customer - using db_model fetch() and save()
+     * Get or create customer - using selectData() with parameterized query
      */
     private static function getOrCreateCustomer($input) {
         if (!empty($input['customer_email'])) {
-            $existing = fetch('customers', "email = '" . mysqli_real_escape_string($GLOBALS['connection'], $input['customer_email']) . "'");
+            // Use selectData() instead of manual escaping
+            $existing = selectData('customers', ['*'], ['email' => $input['customer_email']]);
             if ($existing) return $existing[0]['id'];
         }
         

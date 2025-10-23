@@ -284,8 +284,8 @@ function rollbackTransaction() {
     return $result;
 }
 
-// REFACTORED: display_all now returns ONLY raw data (no HTML)
-// This function is now MVC compliant - pure data retrieval
+
+//data retrieval
 function display_all_data($sql, $column_mappings = [], $format = 'simple') {
     global $connection;
     $result = mysqli_query($connection, $sql);

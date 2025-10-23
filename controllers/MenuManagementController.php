@@ -68,14 +68,13 @@ class MenuManagementController {
         $totalItems = count(fetch($this->menuTable));
         $bestSellers = count(fetch($this->menuTable, 'is_best_seller = 1'));
         
-        // Calculate average price
-        global $connection;
-        $avgPriceResult = mysqli_query($connection, "SELECT AVG(price) as avg_price FROM {$this->menuTable}");
-        $avgPrice = mysqli_fetch_assoc($avgPriceResult)['avg_price'] ?? 0;
+        // Use selectData() for price statistics instead of direct queries
+        $avgPriceResult = selectData($this->menuTable, ['AVG(price) as avg_price']);
+        $avgPrice = $avgPriceResult ? $avgPriceResult[0]['avg_price'] : 0;
         
-        // Get price range
-        $priceRangeResult = mysqli_query($connection, "SELECT MIN(price) as min_price, MAX(price) as max_price FROM {$this->menuTable}");
-        $priceRange = mysqli_fetch_assoc($priceRangeResult);
+        // Get price range using selectData()
+        $priceRangeResult = selectData($this->menuTable, ['MIN(price) as min_price', 'MAX(price) as max_price']);
+        $priceRange = $priceRangeResult ? $priceRangeResult[0] : ['min_price' => 0, 'max_price' => 0];
         
         return [
             'total_items' => $totalItems,
@@ -100,8 +99,8 @@ class MenuManagementController {
             return $this->redirectWithError("Please provide valid menu item details.");
         }
         
-        // Check for duplicate names
-        $existingItem = fetch($this->menuTable, "name = '" . mysqli_real_escape_string($GLOBALS['connection'], $name) . "'");
+        // Check for duplicate names using selectData() with parameterized query
+        $existingItem = selectData($this->menuTable, ['*'], ['name' => $name]);
         if (!empty($existingItem)) {
             return $this->redirectWithError("A menu item with this name already exists.");
         }
@@ -154,9 +153,21 @@ class MenuManagementController {
             return $this->redirectWithError("Menu item not found.");
         }
         
-        // Check for duplicate names (excluding current item)
-        $duplicateCheck = fetch($this->menuTable, "name = '" . mysqli_real_escape_string($GLOBALS['connection'], $name) . "' AND menu_id != $menuId");
-        if (!empty($duplicateCheck)) {
+        // Check for duplicate names using selectData() to avoid current item
+        $duplicateCheck = selectData($this->menuTable, ['*'], ['name' => $name]);
+        
+        // Filter out current item from duplicates
+        $hasDuplicate = false;
+        if ($duplicateCheck) {
+            foreach ($duplicateCheck as $item) {
+                if ($item['menu_id'] != $menuId) {
+                    $hasDuplicate = true;
+                    break;
+                }
+            }
+        }
+        
+        if ($hasDuplicate) {
             return $this->redirectWithError("A menu item with this name already exists.");
         }
         
