@@ -581,21 +581,6 @@ function delete($table, $idValue, $idColumn = 'id') {
     return $result;
 }
 
-// Redirect function
-function redirect_to($new_location) {
-    header("Location: ".$new_location);
-    exit();
-}
-
-// Redirect with message function (for better UX)
-function redirect_with_message($location, $message, $type) {
-    $encodedMessage = urlencode($message);
-    $redirectUrl = $location . "?message=" . $encodedMessage . "&type=" . $type;
-    header("Location: " . $redirectUrl);
-    exit();
-}
-
-
 function closeConnection() {
     global $connection;
     mysqli_close($connection);

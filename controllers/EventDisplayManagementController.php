@@ -7,6 +7,7 @@
  */
 
 require_once __DIR__ . '/../config/db_model.php';
+require_once __DIR__ . '/ControllerHelper.php';
 
 class EventDisplayManagementController {
     private $bannerTable = 'banners';

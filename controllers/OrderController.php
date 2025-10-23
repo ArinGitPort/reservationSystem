@@ -76,20 +76,20 @@ class OrderController {
      */
     private static function testConnection() {
         try {
-            $db = require_once __DIR__ . '/../config/db_model.php';
+            global $connection;
             
-            // Test basic connection
-            $result = fetch("SELECT 1 as test");
+            // Test basic connection using selectData
+            $result = selectData('orders', ['1 as test'], [], '', 1);
             
-            // Test orders table
-            $orders = fetch("SELECT COUNT(*) as count FROM orders");
+            // Test orders table count
+            $ordersCount = selectData('orders', ['COUNT(*) as count']);
             
             echo json_encode([
                 'success' => true,
                 'message' => 'Connection successful',
                 'data' => [
                     'connection_test' => $result,
-                    'orders_count' => $orders
+                    'orders_count' => $ordersCount ? $ordersCount[0]['count'] : 0
                 ]
             ]);
         } catch (Exception $e) {

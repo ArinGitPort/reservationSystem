@@ -1,6 +1,7 @@
 <?php
 $configPath = file_exists('../config/db_model.php') ? '../config/db_model.php' : '../../config/db_model.php';
 require_once $configPath;
+require_once __DIR__ . '/ControllerHelper.php';
 
 class MenuManagementController {
     private $menuTable = 'menu';

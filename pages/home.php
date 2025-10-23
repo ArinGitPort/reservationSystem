@@ -1,17 +1,12 @@
 <?php 
 $page_title = 'Ellen\'s Food House | Home';
-require_once '../config/db_model.php';
+require_once '../controllers/HomeController.php';
 
-// Get active banners for carousel and auto-deactivate expired events
-$today = date('Y-m-d');
+// Use controller to handle business logic
+HomeController::deactivateExpiredBanners();
+$activeBanners = HomeController::getActiveBanners();
 
-// First, automatically deactivate expired events using enhanced update function
-update('banners', ['active' => 0], "event_end_date < '{$today}' AND active = 1");
-
-// Get active banners that are currently running or upcoming using enhanced fetch function
-$activeBanners = fetch('banners', "active = 1 AND (event_end_date >= '{$today}' OR event_end_date IS NULL)", "event_start_date ASC, date_uploaded DESC");
 include '../includes/header.php';
-
 ?>
 
     <!-- Main Content -->
