@@ -20,11 +20,11 @@ $is_home = ($current_page == 'home.php');
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     
     <!-- Header CSS - Always included -->
-    <link rel="stylesheet" href="../assets/css/header_new.css">
+    <link rel="stylesheet" href="../assets/css/header.css">
     
     <!-- Page-specific CSS -->
     <?php if ($is_home): ?>
-    <link rel="stylesheet" href="../assets/css/home_new.css">
+    <link rel="stylesheet" href="../assets/css/home.css">
     <?php elseif ($current_page == 'menu.php'): ?>
     <link rel="stylesheet" href="../assets/css/menu.css">
     <?php endif; ?>
