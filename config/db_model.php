@@ -1,16 +1,34 @@
 <?php
-define("DB_SERVER", "localhost");
-define("DB_NAME", "ellenfoodhouse");
-define("DB_USER", "root");
-define("DB_PASS", "password"); // Empty password for default XAMPP setup
+/**
+ * Database Model - Pure Data Layer (MVC Compliant)
+ * 
+ * This file contains ONLY database operations and data retrieval.
+ * NO HTML rendering or business logic should be in this file.
+ * 
+ * All database credentials are externalized to config.php
+ */
 
-$connection = mysqli_connect(DB_SERVER, DB_USER, DB_PASS, DB_NAME);
-	if (mysqli_connect_errno()) {
+// Load external configuration
+require_once __DIR__ . '/config.php';
+
+// Database connection using external configuration
+$dbConfig = DB_CONFIG;
+$connection = mysqli_connect(
+    $dbConfig['server'], 
+    $dbConfig['username'], 
+    $dbConfig['password'], 
+    $dbConfig['database']
+);
+
+if (mysqli_connect_errno()) {
     die("Database connection failed: " .
         mysqli_connect_error() .
         "(" . mysqli_connect_errno() . ")"
     );
 }
+
+// Set charset
+mysqli_set_charset($connection, $dbConfig['charset']);
 
 //display
 //fetch all records from a table - pure data retrieval
@@ -39,290 +57,259 @@ function fetch($table, $conditions = '', $orderBy = '', $limit = '') {
     return $data;
 }
 
-// Legacy display_all function - outputs HTML directly
-function display_all($sql, $column_mappings, $url, $format = 'simple') {
+/**
+ * Centralized parameterized SELECT method for DRY compliance
+ * Prevents SQL injection and provides consistent querying interface
+ * 
+ * @param string $table Table name
+ * @param array $columns Columns to select (default: all)
+ * @param array $conditions WHERE conditions as key-value pairs
+ * @param string $orderBy ORDER BY clause
+ * @param int $limit LIMIT clause
+ * @param int $offset OFFSET clause
+ * @param array $joins JOIN clauses
+ * @return array Result set
+ */
+function selectData($table, $columns = ['*'], $conditions = [], $orderBy = '', $limit = 0, $offset = 0, $joins = []) {
     global $connection;
-    $output_list = "";
+    
+    $sql = "SELECT " . implode(', ', $columns) . " FROM {$table}";
+    
+    // Add JOINs
+    foreach ($joins as $join) {
+        $sql .= " " . $join;
+    }
+    
+    $params = [];
+    $types = '';
+    
+    // Add WHERE conditions
+    if (!empty($conditions)) {
+        $whereClauses = [];
+        foreach ($conditions as $column => $value) {
+            if (is_array($value)) {
+                // Handle IN conditions
+                $placeholders = str_repeat('?,', count($value) - 1) . '?';
+                $whereClauses[] = "{$column} IN ({$placeholders})";
+                foreach ($value as $val) {
+                    $params[] = $val;
+                    $types .= getParamType($val);
+                }
+            } elseif (strpos($column, ' ') !== false) {
+                // Handle complex conditions like "column LIKE" or "column >="
+                $whereClauses[] = $column;
+                $params[] = $value;
+                $types .= getParamType($value);
+            } else {
+                // Simple equality condition
+                $whereClauses[] = "{$column} = ?";
+                $params[] = $value;
+                $types .= getParamType($value);
+            }
+        }
+        $sql .= " WHERE " . implode(' AND ', $whereClauses);
+    }
+    
+    // Add ORDER BY
+    if (!empty($orderBy)) {
+        $sql .= " ORDER BY {$orderBy}";
+    }
+    
+    // Add LIMIT and OFFSET
+    if ($limit > 0) {
+        $sql .= " LIMIT {$limit}";
+        if ($offset > 0) {
+            $sql .= " OFFSET {$offset}";
+        }
+    }
+    
+    return executeQuery($sql, $params, $types);
+}
+
+/**
+ * Centralized paginated SELECT method for optimized data fetching
+ * 
+ * @param string $table Table name
+ * @param int $page Page number (1-based)
+ * @param int $limit Records per page
+ * @param array $columns Columns to select
+ * @param array $conditions WHERE conditions
+ * @param string $orderBy ORDER BY clause
+ * @param array $joins JOIN clauses
+ * @return array ['data' => results, 'pagination' => info]
+ */
+function selectWithPagination($table, $page = 1, $limit = null, $columns = ['*'], $conditions = [], $orderBy = '', $joins = []) {
+    global $connection;
+    
+    if ($limit === null) {
+        $limit = PAGINATION_CONFIG['default_limit'];
+    }
+    
+    // Ensure limit doesn't exceed maximum
+    $limit = min($limit, PAGINATION_CONFIG['max_limit']);
+    $offset = ($page - 1) * $limit;
+    
+    // Get total count for pagination info
+    $countSql = "SELECT COUNT(*) as total FROM {$table}";
+    
+    // Add JOINs for count
+    foreach ($joins as $join) {
+        $countSql .= " " . $join;
+    }
+    
+    $params = [];
+    $types = '';
+    
+    // Add WHERE conditions for count
+    if (!empty($conditions)) {
+        $whereClauses = [];
+        foreach ($conditions as $column => $value) {
+            if (is_array($value)) {
+                $placeholders = str_repeat('?,', count($value) - 1) . '?';
+                $whereClauses[] = "{$column} IN ({$placeholders})";
+                foreach ($value as $val) {
+                    $params[] = $val;
+                    $types .= getParamType($val);
+                }
+            } elseif (strpos($column, ' ') !== false) {
+                $whereClauses[] = $column;
+                $params[] = $value;
+                $types .= getParamType($value);
+            } else {
+                $whereClauses[] = "{$column} = ?";
+                $params[] = $value;
+                $types .= getParamType($value);
+            }
+        }
+        $countSql .= " WHERE " . implode(' AND ', $whereClauses);
+    }
+    
+    // Execute count query
+    $countResult = executeQuery($countSql, $params, $types);
+    $totalRecords = $countResult[0]['total'] ?? 0;
+    
+    // Get actual data
+    $data = selectData($table, $columns, $conditions, $orderBy, $limit, $offset, $joins);
+    
+    // Calculate pagination info
+    $totalPages = ceil($totalRecords / $limit);
+    
+    return [
+        'data' => $data,
+        'pagination' => [
+            'current_page' => $page,
+            'total_pages' => $totalPages,
+            'total_records' => $totalRecords,
+            'records_per_page' => $limit,
+            'has_next' => $page < $totalPages,
+            'has_previous' => $page > 1
+        ]
+    ];
+}
+
+/**
+ * Execute parameterized query safely
+ */
+function executeQuery($sql, $params = [], $types = '') {
+    global $connection;
+    
+    $stmt = mysqli_prepare($connection, $sql);
+    
+    if (!$stmt) {
+        throw new Exception("Query preparation failed: " . mysqli_error($connection));
+    }
+    
+    // Bind parameters if any
+    if (!empty($params)) {
+        mysqli_stmt_bind_param($stmt, $types, ...$params);
+    }
+    
+    if (!mysqli_stmt_execute($stmt)) {
+        $error = mysqli_stmt_error($stmt);
+        mysqli_stmt_close($stmt);
+        throw new Exception("Query execution failed: " . $error);
+    }
+    
+    $result = mysqli_stmt_get_result($stmt);
+    $data = [];
+    
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $data[] = $row;
+        }
+    }
+    
+    mysqli_stmt_close($stmt);
+    return $data;
+}
+
+/**
+ * Get parameter type for prepared statement
+ */
+function getParamType($value) {
+    if (is_int($value)) {
+        return 'i';
+    } elseif (is_float($value)) {
+        return 'd';
+    } else {
+        return 's';
+    }
+}
+
+/**
+ * Begin database transaction for atomic operations
+ */
+function beginTransaction() {
+    global $connection;
+    return mysqli_autocommit($connection, false);
+}
+
+/**
+ * Commit database transaction
+ */
+function commitTransaction() {
+    global $connection;
+    $result = mysqli_commit($connection);
+    mysqli_autocommit($connection, true);
+    return $result;
+}
+
+/**
+ * Rollback database transaction
+ */
+function rollbackTransaction() {
+    global $connection;
+    $result = mysqli_rollback($connection);
+    mysqli_autocommit($connection, true);
+    return $result;
+}
+
+// REFACTORED: display_all now returns ONLY raw data (no HTML)
+// This function is now MVC compliant - pure data retrieval
+function display_all_data($sql, $column_mappings = [], $format = 'simple') {
+    global $connection;
     $result = mysqli_query($connection, $sql);
+    $data = [];
+
+    if (!$result) {
+        return ['success' => false, 'data' => [], 'error' => mysqli_error($connection)];
+    }
 
     $rowCount = mysqli_num_rows($result);
 
     if ($rowCount > 0) {
-        $index = 1;
-        while($row = mysqli_fetch_array($result)){ 
-            if ($format === 'table') {
-                // Bootstrap table row format
-                $output_list .= "<tr>";
-                $output_list .= "<td>" . $index . "</td>";
-                
-                // Special handling for customer account management
-                if ($url == 'account_management.php') {
-                    // Profile column with image
-                    $output_list .= "<td>";
-                    if (isset($row['image_path']) && $row['image_path']) {
-                        $output_list .= "<img src='../../uploads/profiles/" . htmlspecialchars($row['image_path']) . "' 
-                                 alt='" . htmlspecialchars($row['first_name'] . ' ' . $row['last_name']) . "' 
-                                 style='width: 50px; height: 50px; object-fit: cover; border-radius: 50%;'>";
-                    } else {
-                        $output_list .= "<div style='width: 50px; height: 50px; background: #f8f9fa; border-radius: 50%; display: flex; align-items: center; justify-content: center;'>
-                                <i class='fas fa-user text-muted'></i>
-                              </div>";
-                    }
-                    $output_list .= "</td>";
-                    
-                    // Name column
-                    $output_list .= "<td><div class='fw-bold'>" . htmlspecialchars($row['first_name'] . ' ' . $row['last_name']) . "</div></td>";
-                    
-                    // Email column
-                    $output_list .= "<td>" . htmlspecialchars($row['email']) . "</td>";
-                    
-                    // Phone column
-                    $output_list .= "<td>" . htmlspecialchars($row['phone'] ?: 'N/A') . "</td>";
-                    
-                    // Date column
-                    $output_list .= "<td>";
-                    $output_list .= "<div>" . date('d M Y', strtotime($row['created_at'])) . "</div>";
-                    $output_list .= "<small class='text-muted'>" . date('h:i A', strtotime($row['created_at'])) . "</small>";
-                    $output_list .= "</td>";
-                    
-                    // Action buttons column
-                    $id = $row['id'];
-                    $output_list .= "<td>";
-                    $output_list .= "<div class='action-buttons'>";
-                    $output_list .= "<button class='btn btn-sm btn-outline-dark' 
-                                onclick=\"editCustomer($id, '" . htmlspecialchars($row['first_name']) . "', '" . htmlspecialchars($row['last_name']) . "', '" . htmlspecialchars($row['email']) . "', '" . htmlspecialchars($row['phone']) . "')\"
-                                data-bs-toggle='modal' data-bs-target='#editCustomerModal'>
-                            <i class='fas fa-edit'></i>
-                          </button>";
-                    $output_list .= "<button class='btn btn-sm btn-outline-danger' 
-                                onclick=\"confirmDelete('customer', $id)\"
-                                data-bs-toggle='modal' data-bs-target='#confirmDeleteModal'>
-                            <i class='fas fa-trash'></i>
-                          </button>";
-                    $output_list .= "</div>";
-                    $output_list .= "</td>";
-                    
-                } elseif ($url == 'menu_management.php') {
-                    // Menu image column
-                    $output_list .= "<td>";
-                    if (isset($row['image_path']) && $row['image_path']) {
-                        $output_list .= "<img src='../../uploads/menu/" . htmlspecialchars($row['image_path']) . "' 
-                                 alt='" . htmlspecialchars($row['name']) . "' 
-                                 style='width: 60px; height: 60px; object-fit: cover; border-radius: 8px;'>";
-                    } else {
-                        $output_list .= "<div style='width: 60px; height: 60px; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; justify-content: center;'>
-                                <i class='fas fa-image text-muted'></i>
-                              </div>";
-                    }
-                    $output_list .= "</td>";
-                    
-                    // Menu name column
-                    $output_list .= "<td><div class='fw-bold'>" . htmlspecialchars($row['name']) . "</div></td>";
-                    
-                    // Price column
-                    $output_list .= "<td><span class='fw-bold text-primary'>₱" . number_format($row['price'], 2) . "</span></td>";
-                    
-                    // Best seller status column
-                    $output_list .= "<td>";
-                    if ($row['is_best_seller']) {
-                        $output_list .= "<span class='badge bg-warning text-dark'><i class='fas fa-star me-1'></i>Best Seller</span>";
-                    } else {
-                        $output_list .= "<span class='badge bg-light text-dark'>Regular</span>";
-                    }
-                    $output_list .= "</td>";
-                    
-                    // Action buttons column
-                    $menuId = $row['menu_id'];
-                    $itemJson = htmlspecialchars(json_encode($row));
-                    $output_list .= "<td>";
-                    $output_list .= "<div class='action-buttons'>";
-                    $output_list .= "<button class='btn btn-sm btn-outline-primary' 
-                                onclick=\"editMenuItem($itemJson)\"
-                                data-bs-toggle='modal' data-bs-target='#editMenuModal'>
-                            <i class='fas fa-edit'></i>
-                          </button>";
-                    $output_list .= "<button class='btn btn-sm btn-outline-danger' 
-                                onclick=\"confirmDelete('$menuId', '" . htmlspecialchars($row['image_path']) . "')\"
-                                data-bs-toggle='modal' data-bs-target='#confirmDeleteModal'>
-                            <i class='fas fa-trash'></i>
-                          </button>";
-                    $output_list .= "</div>";
-                    $output_list .= "</td>";
-                    
-                } elseif ($url == 'reservation_management.php') {
-                    // Customer name column
-                    $output_list .= "<td>";
-                    $output_list .= "<div class='fw-bold'>" . htmlspecialchars($row['first_name'] . ' ' . $row['last_name']) . "</div>";
-                    $output_list .= "<small class='text-muted'>" . htmlspecialchars($row['email']) . "</small>";
-                    $output_list .= "</td>";
-                    
-                    // Date column
-                    $output_list .= "<td>" . date('d M Y', strtotime($row['reservation_date'])) . "</td>";
-                    
-                    // Time column
-                    $output_list .= "<td>" . date('g:i A', strtotime($row['reservation_time'])) . "</td>";
-                    
-                    // Party size column
-                    $output_list .= "<td>" . $row['party_size'] . "</td>";
-                    
-                    // Table column
-                    $output_list .= "<td>" . ($row['table_number'] ?: 'TBD') . "</td>";
-                    
-                    // Status column
-                    $output_list .= "<td>";
-                    $output_list .= "<span class='status-badge status-" . $row['status'] . "'>";
-                    $output_list .= ucfirst($row['status']);
-                    $output_list .= "</span>";
-                    $output_list .= "</td>";
-                    
-                    // Action buttons column
-                    $reservationId = $row['id'];
-                    $output_list .= "<td>";
-                    $output_list .= "<div class='action-buttons'>";
-                    $output_list .= "<div class='dropdown'>";
-                    $output_list .= "<button class='btn btn-sm btn-outline-dark dropdown-toggle' type='button' data-bs-toggle='dropdown'>";
-                    $output_list .= "<i class='fas fa-cog'></i>";
-                    $output_list .= "</button>";
-                    $output_list .= "<ul class='dropdown-menu'>";
-                    $output_list .= "<li><a class='dropdown-item' href='#' onclick=\"updateStatus($reservationId, 'pending')\">Set Pending</a></li>";
-                    $output_list .= "<li><a class='dropdown-item' href='#' onclick=\"updateStatus($reservationId, 'confirmed')\">Set Confirmed</a></li>";
-                    $output_list .= "<li><a class='dropdown-item' href='#' onclick=\"updateStatus($reservationId, 'cancelled')\">Set Cancelled</a></li>";
-                    $output_list .= "</ul>";
-                    $output_list .= "</div>";
-                    $output_list .= "<button class='btn btn-sm btn-outline-danger' 
-                                onclick=\"confirmDelete('reservation', $reservationId)\"
-                                data-bs-toggle='modal' data-bs-target='#confirmDeleteModal'>
-                            <i class='fas fa-trash'></i>
-                          </button>";
-                    $output_list .= "</div>";
-                    $output_list .= "</td>";
-                    
-                } elseif ($url == 'event_display_management.php') {
-                    // Banner preview column
-                    $output_list .= "<td>";
-                    $output_list .= "<img src='../../uploads/banners/" . htmlspecialchars($row['filename']) . "' 
-                             alt='" . htmlspecialchars($row['title']) . "' 
-                             style='width: 80px; height: 50px; object-fit: cover; border-radius: 4px;'>";
-                    $output_list .= "</td>";
-                    
-                    // Event details column
-                    $output_list .= "<td>";
-                    $output_list .= "<div class='fw-bold mb-1'>" . htmlspecialchars($row['title']) . "</div>";
-                    if (isset($row['description']) && $row['description']) {
-                        $description = htmlspecialchars(substr($row['description'], 0, 80));
-                        $description .= strlen($row['description']) > 80 ? '...' : '';
-                        $output_list .= "<small class='text-muted'>$description</small>";
-                    } else {
-                        $output_list .= "<small class='text-muted'>No description</small>";
-                    }
-                    $output_list .= "</td>";
-                    
-                    // Event date column
-                    $output_list .= "<td>";
-                    if (isset($row['event_start_date']) && $row['event_start_date']) {
-                        $output_list .= "<div class='fw-bold text-primary'>" . date('M d, Y', strtotime($row['event_start_date'])) . "</div>";
-                        $output_list .= "<small class='text-muted'>to</small>";
-                        $output_list .= "<div class='fw-bold text-primary'>" . date('M d, Y', strtotime($row['event_end_date'])) . "</div>";
-                    } elseif (isset($row['event_date']) && $row['event_date']) {
-                        $output_list .= "<div class='fw-bold text-primary'>" . date('M d, Y', strtotime($row['event_date'])) . "</div>";
-                    } else {
-                        $output_list .= "<span class='text-muted'>Not set</span>";
-                    }
-                    $output_list .= "</td>";
-                    
-                    // Status column
-                    $output_list .= "<td>";
-                    $output_list .= "<div class='d-flex flex-column gap-1'>";
-                    $output_list .= "<span class='badge bg-" . ($row['active'] ? 'success' : 'secondary') . "'>";
-                    $output_list .= ($row['active'] ? 'Active' : 'Inactive');
-                    $output_list .= "</span>";
-                    $output_list .= "</div>";
-                    $output_list .= "</td>";
-                    
-                    // Uploaded date column
-                    $output_list .= "<td>" . date('M d, Y', strtotime($row['date_uploaded'])) . "</td>";
-                    
-                    // Action buttons column
-                    $bannerId = $row['banner_id'];
-                    $output_list .= "<td>";
-                    $output_list .= "<div class='action-buttons'>";
-                    
-                    // Create JSON data for edit functionality using data attribute
-                    $bannerJson = htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8');
-                    $output_list .= "<button class='btn btn-sm btn-outline-primary edit-banner-btn' 
-                                data-banner='$bannerJson'
-                                data-bs-toggle='modal' data-bs-target='#editBannerModal' title='Edit Banner'>
-                            <i class='fas fa-edit'></i>
-                          </button>";
-                    $output_list .= "<form method='POST' style='display: inline;'>";
-                    $output_list .= "<input type='hidden' name='action' value='toggle_banner'>";
-                    $output_list .= "<input type='hidden' name='banner_id' value='$bannerId'>";
-                    $output_list .= "<input type='hidden' name='current_status' value='" . $row['active'] . "'>";
-                    $output_list .= "<button type='submit' class='btn btn-sm btn-outline-secondary' title='Toggle Status'>";
-                    $output_list .= "<i class='fas fa-" . ($row['active'] ? 'eye-slash' : 'eye') . "'></i>";
-                    $output_list .= "</button>";
-                    $output_list .= "</form>";
-                    $output_list .= "<button class='btn btn-sm btn-outline-danger' 
-                                onclick=\"confirmDelete('$bannerId', '" . htmlspecialchars($row['filename']) . "')\"
-                                data-bs-toggle='modal' data-bs-target='#confirmDeleteModal' title='Delete Banner'>
-                            <i class='fas fa-trash'></i>
-                          </button>";
-                    $output_list .= "</div>";
-                    $output_list .= "</td>";
-                    
-                } else {
-                    // Generic table format for other pages
-                    foreach ($column_mappings as $column_name => $label) {
-                        $value = $row[$column_name];
-                        if (strpos($column_name, 'date') !== false) {
-                            $value = date('M d, Y', strtotime($value));
-                        }
-                        $output_list .= "<td>" . htmlspecialchars($value) . "</td>";
-                    }
-                    
-                    $id = $row['id'];
-                    $output_list .= "<td>";
-                    $output_list .= "<button class='btn btn-sm btn-outline-primary me-1' onclick='editRecord($id)'><i class='fas fa-edit'></i></button>";
-                    $output_list .= "<button class='btn btn-sm btn-outline-danger' onclick='deleteRecord($id)'><i class='fas fa-trash'></i></button>";
-                    $output_list .= "</td>";
-                }
-                
-                $output_list .= "</tr>";
-                $index++;
-            } else {
-                // Simple format (original)
-                foreach ($column_mappings as $column_name => $label) {
-                    $value = $row[$column_name];
-                    if (strpos($column_name, 'date') !== false) {
-                        $value = strftime("%b %d, %Y", strtotime($value));
-                    }
-                    $output_list .= "<strong>$label </strong> $value &nbsp; ";
-                }
-                
-                $id = $row['id'];
-                $output_list .= "<a href='edit.php?editid=$id'>edit</a> &bull; <a href='$url?deleteid=$id'>delete</a><br />";
-            }
-        }
-    } else {
-        if ($format === 'table') {
-            $columnCount = 7; // Default
-            if ($url == 'account_management.php') {
-                $columnCount = 7; // #, Profile, Name, Email, Phone, Added, Manage
-            } elseif ($url == 'menu_management.php') {
-                $columnCount = 6; // #, Image, Name, Price, Best Seller, Manage
-            } elseif ($url == 'reservation_management.php') {
-                $columnCount = 8; // #, Customer, Date, Time, Party Size, Table, Status, Manage
-            } elseif ($url == 'event_display_management.php') {
-                $columnCount = 7; // #, Preview, Event Details, Event Date, Status, Uploaded, Manage
-            } else {
-                $columnCount = count($column_mappings) + 2; // +2 for # and Actions columns
-            }
-            $output_list = "<tr><td colspan='$columnCount' class='text-center text-muted'>No records found.</td></tr>";
-        } else {
-            $output_list = "No records found.";
+        while($row = mysqli_fetch_array($result)) {
+            $data[] = $row;
         }
     }
-    echo $output_list;
+    
+    return [
+        'success' => true,
+        'data' => $data,
+        'count' => $rowCount,
+        'format' => $format,
+        'column_mappings' => $column_mappings
+    ];
 }
 
 

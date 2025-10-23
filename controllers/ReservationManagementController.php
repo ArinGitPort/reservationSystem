@@ -136,7 +136,7 @@ class ReservationManagementController {
     }
     
     /**
-     * Add reservation with validation
+     * Add reservation with validation and auto-assignment
      */
     private function addReservation() {
         $customerId = intval($_POST['customer_id'] ?? 0);
@@ -168,8 +168,14 @@ class ReservationManagementController {
             return $this->redirectWithError("Customer already has a reservation at this date and time.");
         }
         
-        // Check table availability if table number specified
-        if ($tableNumber) {
+        // Auto-assign table number if not provided
+        if (!$tableNumber) {
+            $tableNumber = $this->autoAssignTable($reservationDate, $reservationTime, $partySize);
+            if (!$tableNumber) {
+                return $this->redirectWithError("No available tables found for the selected date and time. Please choose a different time or specify a table number manually.");
+            }
+        } else {
+            // Check table availability if table number specified
             $activeStatuses = "'" . implode("', '", self::getActiveStatuses()) . "'";
             $tableConflict = fetch($this->reservationTable, "table_number = $tableNumber AND reservation_date = '$reservationDate' AND reservation_time = '$reservationTime' AND status IN ($activeStatuses)");
             if ($tableConflict) {
@@ -177,25 +183,121 @@ class ReservationManagementController {
             }
         }
         
-        // Prepare data for insertion using generic save function
-        $reservationData = [
-            'customer_id' => $customerId,
-            'reservation_date' => $reservationDate,
-            'reservation_time' => $reservationTime,
-            'party_size' => $partySize,
-            'table_number' => $tableNumber,
-            'special_requests' => $specialRequests,
-            'status' => 'pending',
-            'created_at' => date('Y-m-d H:i:s')
+        // Begin transaction for atomic operation
+        beginTransaction();
+        
+        try {
+            // Prepare data for insertion using generic save function
+            $reservationData = [
+                'customer_id' => $customerId,
+                'reservation_date' => $reservationDate,
+                'reservation_time' => $reservationTime,
+                'party_size' => $partySize,
+                'table_number' => $tableNumber,
+                'special_requests' => $specialRequests,
+                'status' => 'pending',
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+            
+            $reservationId = save($this->reservationTable, $reservationData);
+            
+            if (!$reservationId) {
+                throw new Exception("Failed to create reservation.");
+            }
+            
+            commitTransaction();
+            
+            $message = "Reservation added successfully!";
+            if ($_POST['table_number'] === '') {
+                $message .= " Table {$tableNumber} has been automatically assigned.";
+            }
+            
+            return $this->redirectWithSuccess($message);
+            
+        } catch (Exception $e) {
+            rollbackTransaction();
+            return $this->redirectWithError("Failed to add reservation: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Auto-assign table number based on availability and party size
+     * Uses active status data to determine which tables are occupied
+     * 
+     * @param string $date Reservation date
+     * @param string $time Reservation time  
+     * @param int $partySize Number of people
+     * @return int|null Table number or null if no table available
+     */
+    private function autoAssignTable($date, $time, $partySize) {
+        global $connection;
+        
+        // Define table capacity mapping (this could be moved to database or config)
+        $tableCapacities = [
+            1 => 2,   // Table 1: 2 seats
+            2 => 2,   // Table 2: 2 seats  
+            3 => 4,   // Table 3: 4 seats
+            4 => 4,   // Table 4: 4 seats
+            5 => 4,   // Table 5: 4 seats
+            6 => 6,   // Table 6: 6 seats
+            7 => 6,   // Table 7: 6 seats
+            8 => 8,   // Table 8: 8 seats
+            9 => 8,   // Table 9: 8 seats
+            10 => 10  // Table 10: 10 seats
         ];
         
-        $reservationId = save($this->reservationTable, $reservationData);
+        // Get active statuses that occupy tables
+        $activeStatuses = self::getActiveStatuses();
+        $activeStatusList = "'" . implode("', '", $activeStatuses) . "'";
         
-        if ($reservationId) {
-            return $this->redirectWithSuccess("Reservation added successfully!");
-        } else {
-            return $this->redirectWithError("Failed to add reservation. Please try again.");
+        // Get occupied tables for the specific date and time (with buffer)
+        $timeBuffer = 2; // 2 hour buffer before and after
+        $sql = "SELECT DISTINCT table_number 
+                FROM {$this->reservationTable} 
+                WHERE reservation_date = '$date' 
+                AND status IN ($activeStatusList)
+                AND table_number IS NOT NULL
+                AND (
+                    (TIME_TO_SEC(reservation_time) BETWEEN 
+                     TIME_TO_SEC('$time') - ($timeBuffer * 3600) AND 
+                     TIME_TO_SEC('$time') + ($timeBuffer * 3600))
+                )";
+        
+        $result = mysqli_query($connection, $sql);
+        $occupiedTables = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $occupiedTables[] = intval($row['table_number']);
         }
+        
+        // Find available tables that can accommodate the party size
+        $availableTables = [];
+        foreach ($tableCapacities as $tableNumber => $capacity) {
+            if (!in_array($tableNumber, $occupiedTables) && $capacity >= $partySize) {
+                $availableTables[] = $tableNumber;
+            }
+        }
+        
+        if (empty($availableTables)) {
+            return null; // No available tables
+        }
+        
+        // Sort by capacity (prefer smaller tables that still fit the party)
+        usort($availableTables, function($a, $b) use ($tableCapacities, $partySize) {
+            $capacityA = $tableCapacities[$a];
+            $capacityB = $tableCapacities[$b];
+            
+            // Calculate "waste" (unused seats)
+            $wasteA = $capacityA - $partySize;
+            $wasteB = $capacityB - $partySize;
+            
+            // Prefer table with less waste, then smaller table number
+            if ($wasteA == $wasteB) {
+                return $a - $b;
+            }
+            return $wasteA - $wasteB;
+        });
+        
+        return $availableTables[0]; // Return the best available table
     }
     
     /**
@@ -340,6 +442,86 @@ class ReservationManagementController {
     }
     
 
+    /**
+     * Get available tables for a specific date, time, and party size
+     * This method can be called via AJAX for real-time table availability
+     * 
+     * @param string $date Reservation date
+     * @param string $time Reservation time
+     * @param int $partySize Number of people
+     * @return array Available tables with their capacities
+     */
+    public function getAvailableTables($date, $time, $partySize) {
+        global $connection;
+        
+        // Define table capacity mapping
+        $tableCapacities = [
+            1 => 2, 2 => 2, 3 => 4, 4 => 4, 5 => 4,
+            6 => 6, 7 => 6, 8 => 8, 9 => 8, 10 => 10
+        ];
+        
+        // Get active statuses that occupy tables
+        $activeStatuses = self::getActiveStatuses();
+        $activeStatusList = "'" . implode("', '", $activeStatuses) . "'";
+        
+        // Get occupied tables for the specific date and time (with buffer)
+        $timeBuffer = 2; // 2 hour buffer
+        $sql = "SELECT DISTINCT table_number 
+                FROM {$this->reservationTable} 
+                WHERE reservation_date = '$date' 
+                AND status IN ($activeStatusList)
+                AND table_number IS NOT NULL
+                AND (
+                    (TIME_TO_SEC(reservation_time) BETWEEN 
+                     TIME_TO_SEC('$time') - ($timeBuffer * 3600) AND 
+                     TIME_TO_SEC('$time') + ($timeBuffer * 3600))
+                )";
+        
+        $result = mysqli_query($connection, $sql);
+        $occupiedTables = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $occupiedTables[] = intval($row['table_number']);
+        }
+        
+        // Build available tables array
+        $availableTables = [];
+        foreach ($tableCapacities as $tableNumber => $capacity) {
+            if (!in_array($tableNumber, $occupiedTables)) {
+                $availableTables[] = [
+                    'table_number' => $tableNumber,
+                    'capacity' => $capacity,
+                    'suitable' => $capacity >= $partySize,
+                    'waste_seats' => max(0, $capacity - $partySize)
+                ];
+            }
+        }
+        
+        // Sort by suitability first, then by waste (efficiency)
+        usort($availableTables, function($a, $b) {
+            if ($a['suitable'] != $b['suitable']) {
+                return $b['suitable'] - $a['suitable']; // Suitable tables first
+            }
+            if ($a['suitable']) {
+                return $a['waste_seats'] - $b['waste_seats']; // Less waste first
+            }
+            return $b['capacity'] - $a['capacity']; // Larger capacity first for unsuitable
+        });
+        
+        return $availableTables;
+    }
+    
+    /**
+     * Get table capacity information
+     * 
+     * @return array Table number to capacity mapping
+     */
+    public static function getTableCapacities() {
+        return [
+            1 => 2, 2 => 2, 3 => 4, 4 => 4, 5 => 4,
+            6 => 6, 7 => 6, 8 => 8, 9 => 8, 10 => 10
+        ];
+    }
+    
     
     private function redirectWithSuccess($message) {
         return redirect_with_message($_SERVER['PHP_SELF'], $message, "success");
