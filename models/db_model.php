@@ -9,7 +9,7 @@
  */
 
 // Load external configuration
-require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/../config/config.php';
 
 // Database connection using external configuration
 $dbConfig = DB_CONFIG;

@@ -12,7 +12,7 @@ define("DB_CONFIG", [
     'server' => 'localhost',
     'database' => 'ellenfoodhouse',
     'username' => 'root',
-    'password' => 'password', // Empty password for default XAMPP setup
+    'password' => '1234', // Empty password for default XAMPP setup
     'charset' => 'utf8mb4'
 ]);
 

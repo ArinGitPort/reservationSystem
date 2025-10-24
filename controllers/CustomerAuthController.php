@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../config/db_model.php';
+require_once __DIR__ . '/../models/db_model.php';
 require_once __DIR__ . '/ControllerHelper.php';
 
 class CustomerAuthController {

@@ -4,7 +4,7 @@
  * Handles business logic for the home page
  */
 
-require_once __DIR__ . '/../config/db_model.php';
+require_once __DIR__ . '/../models/db_model.php';
 
 class HomeController {
     

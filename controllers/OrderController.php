@@ -4,7 +4,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 // Handle different calling contexts (direct vs from admin pages)
-$configPath = file_exists('../config/db_model.php') ? '../config/db_model.php' : '../../config/db_model.php';
+$configPath = file_exists('../models/db_model.php') ? '../models/db_model.php' : '../../models/db_model.php';
 require_once $configPath;
 
 class OrderController {
