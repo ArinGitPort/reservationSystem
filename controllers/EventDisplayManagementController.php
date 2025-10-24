@@ -253,17 +253,13 @@ class EventDisplayManagementController {
     }
     
     /**
-     * DRY Helper: Delete uploaded file safely
+     * DRY Helper: Delete uploaded file using unified delete() function from db_model
      */
     private function deleteUploadedFile($filename, $subfolder) {
         if ($filename) {
-            $filePath = UPLOAD_CONFIG['base_path'] . $subfolder . '/' . $filename;
-            if (file_exists($filePath)) {
-                if (!unlink($filePath)) {
-                    error_log("Warning: Failed to delete file: " . $filePath);
-                }
-            }
+            return delete($filename, $subfolder);
         }
+        return false;
     }
     
     /**
@@ -307,12 +303,13 @@ class EventDisplayManagementController {
         return ['success' => true, 'filename' => $newFilename];
     }
     
+    // DRY: Redirect methods now moved to ControllerHelper.php as generic functions
     private function redirectWithSuccess($message) {
-        return redirect_with_message($_SERVER['PHP_SELF'], $message, "success");
+        return redirect_with_success($message);
     }
     
     private function redirectWithError($message) {
-        return redirect_with_message($_SERVER['PHP_SELF'], $message, "error");
+        return redirect_with_error($message);
     }
 }
 ?>

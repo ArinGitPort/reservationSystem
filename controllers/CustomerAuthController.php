@@ -52,9 +52,9 @@ class CustomerAuthController {
             $_SESSION['last_activity'] = time();
             
             if (isset($_SESSION['customer_session_token'])) {
-                global $connection;
-                $token = mysqli_real_escape_string($connection, $_SESSION['customer_session_token']);
-                mysqli_query($connection, "UPDATE customer_sessions SET last_activity = NOW() WHERE session_token = '$token'");
+                // Use generic executeQuery function
+                $sql = "UPDATE customer_sessions SET last_activity = NOW() WHERE session_token = ?";
+                executeQuery($sql, [$_SESSION['customer_session_token']], 's');
             }
         }
     }
@@ -188,9 +188,9 @@ class CustomerAuthController {
         self::startSession();
         
         if (isset($_SESSION['customer_session_token'])) {
-            global $connection;
-            $token = mysqli_real_escape_string($connection, $_SESSION['customer_session_token']);
-            mysqli_query($connection, "DELETE FROM customer_sessions WHERE session_token = '$token'");
+            // Use generic delete function
+            $sql = "DELETE FROM customer_sessions WHERE session_token = ?";
+            executeQuery($sql, [$_SESSION['customer_session_token']], 's');
         }
         
         if (isset($_COOKIE['customer_remember_token'])) {

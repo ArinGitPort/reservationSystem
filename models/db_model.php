@@ -414,21 +414,49 @@ function update($tableOrSql, $data = null, $conditions = '') {
     }
 }
 
-// Generic delete function
-function delete($table, $idValue, $idColumn = 'id') {
+// Generic delete function - handles both database records and files
+function delete($tableOrPath, $idValueOrSubfolder = null, $idColumn = 'id') {
     global $connection;
-    $sql = "DELETE FROM {$table} WHERE {$idColumn} = ?";
-    $stmt = mysqli_prepare($connection, $sql);
     
-    if (!$stmt) {
-        return false;
+    // If second parameter is null or starts with special characters, treat as file deletion
+    if ($idValueOrSubfolder === null || strpos($tableOrPath, '/') !== false || strpos($tableOrPath, '\\') !== false) {
+        // File deletion mode
+        $filePath = $tableOrPath;
+        $subfolder = $idValueOrSubfolder ?? '';
+        
+        // Build full path if subfolder provided
+        if (!empty($subfolder) && !strpos($filePath, '/') && !strpos($filePath, '\\')) {
+            $filePath = "../../uploads/{$subfolder}/" . $filePath;
+        }
+        
+        // Validate file path for security
+        if (strpos(realpath($filePath ?: ''), realpath('../../uploads/')) !== 0) {
+            return false; // Path not within uploads directory
+        }
+        
+        if (file_exists($filePath)) {
+            return unlink($filePath);
+        }
+        
+        return false; // File doesn't exist
+    } else {
+        // Database deletion mode
+        $table = $tableOrPath;
+        $idValue = $idValueOrSubfolder;
+        
+        $sql = "DELETE FROM {$table} WHERE {$idColumn} = ?";
+        $stmt = mysqli_prepare($connection, $sql);
+        
+        if (!$stmt) {
+            return false;
+        }
+        
+        mysqli_stmt_bind_param($stmt, "i", $idValue);
+        $result = mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+        
+        return $result;
     }
-    
-    mysqli_stmt_bind_param($stmt, "i", $idValue);
-    $result = mysqli_stmt_execute($stmt);
-    mysqli_stmt_close($stmt);
-    
-    return $result;
 }
 
 function closeConnection() {

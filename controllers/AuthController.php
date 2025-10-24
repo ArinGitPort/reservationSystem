@@ -49,11 +49,10 @@ class AuthController {
         if (isset($_SESSION['admin_user_id'])) {
             $_SESSION['last_activity'] = time();
             
-            // Update database session
+            // Update database session using generic executeQuery
             if (isset($_SESSION['session_token'])) {
-                global $connection;
-                $token = mysqli_real_escape_string($connection, $_SESSION['session_token']);
-                mysqli_query($connection, "UPDATE login_sessions SET last_activity = NOW() WHERE session_token = '$token'");
+                $sql = "UPDATE login_sessions SET last_activity = NOW() WHERE session_token = ?";
+                executeQuery($sql, [$_SESSION['session_token']], 's');
             }
         }
     }
@@ -226,9 +225,9 @@ class AuthController {
         
         // Delete session from database
         if (isset($_SESSION['session_token'])) {
-            global $connection;
-            $token = mysqli_real_escape_string($connection, $_SESSION['session_token']);
-            mysqli_query($connection, "DELETE FROM login_sessions WHERE session_token = '$token'");
+            // Use generic executeQuery for session cleanup
+            $sql = "DELETE FROM login_sessions WHERE session_token = ?";
+            executeQuery($sql, [$_SESSION['session_token']], 's');
         }
         
         // Clear remember me cookie
