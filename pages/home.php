@@ -153,7 +153,7 @@ include '../includes/header.php';
                     <h4>Follow Us</h4>
                     <p>Stay connected for updates and special offers</p>
                     <div style="margin-top: 1rem;">
-                        <a href="#" style="margin-right: 1rem;"><i class="fab fa-facebook fa-lg"></i></a>
+                        <a href="https://www.facebook.com/profile.php?id=100067114307567" style="margin-right: 1rem;"><i class="fab fa-facebook fa-lg"></i></a>
                         <a href="#" style="margin-right: 1rem;"><i class="fab fa-instagram fa-lg"></i></a>
                         <a href="#"><i class="fab fa-twitter fa-lg"></i></a>
                     </div>

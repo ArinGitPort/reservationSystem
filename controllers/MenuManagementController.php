@@ -69,12 +69,14 @@ class MenuManagementController {
         $totalItems = count(fetch($this->menuTable));
         $bestSellers = count(fetch($this->menuTable, 'is_best_seller = 1'));
         
-        // Use selectData() for price statistics instead of direct queries
-        $avgPriceResult = selectData($this->menuTable, ['AVG(price) as avg_price']);
+        // Use executeQuery() for price statistics instead of direct queries
+        $sql = "SELECT AVG(price) as avg_price FROM {$this->menuTable}";
+        $avgPriceResult = executeQuery($sql, [], '');
         $avgPrice = $avgPriceResult ? $avgPriceResult[0]['avg_price'] : 0;
         
-        // Get price range using selectData()
-        $priceRangeResult = selectData($this->menuTable, ['MIN(price) as min_price', 'MAX(price) as max_price']);
+        // Get price range using executeQuery()
+        $sql = "SELECT MIN(price) as min_price, MAX(price) as max_price FROM {$this->menuTable}";
+        $priceRangeResult = executeQuery($sql, [], '');
         $priceRange = $priceRangeResult ? $priceRangeResult[0] : ['min_price' => 0, 'max_price' => 0];
         
         return [
@@ -100,8 +102,9 @@ class MenuManagementController {
             return $this->redirectWithError("Please provide valid menu item details.");
         }
         
-        // Check for duplicate names using selectData() with parameterized query
-        $existingItem = selectData($this->menuTable, ['*'], ['name' => $name]);
+        // Check for duplicate names using executeQuery with parameterized query
+        $sql = "SELECT * FROM {$this->menuTable} WHERE name = ?";
+        $existingItem = executeQuery($sql, [$name], 's');
         if (!empty($existingItem)) {
             return $this->redirectWithError("A menu item with this name already exists.");
         }
@@ -154,21 +157,11 @@ class MenuManagementController {
             return $this->redirectWithError("Menu item not found.");
         }
         
-        // Check for duplicate names using selectData() to avoid current item
-        $duplicateCheck = selectData($this->menuTable, ['*'], ['name' => $name]);
+        // Check for duplicate names using executeQuery to avoid current item
+        $sql = "SELECT * FROM {$this->menuTable} WHERE name = ? AND menu_id != ?";
+        $duplicateCheck = executeQuery($sql, [$name, $menuId], 'si');
         
-        // Filter out current item from duplicates
-        $hasDuplicate = false;
-        if ($duplicateCheck) {
-            foreach ($duplicateCheck as $item) {
-                if ($item['menu_id'] != $menuId) {
-                    $hasDuplicate = true;
-                    break;
-                }
-            }
-        }
-        
-        if ($hasDuplicate) {
+        if (!empty($duplicateCheck)) {
             return $this->redirectWithError("A menu item with this name already exists.");
         }
         

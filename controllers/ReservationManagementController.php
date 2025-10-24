@@ -61,47 +61,50 @@ class ReservationManagementController {
     }
     
     /**
-     * Get all reservations with optional filtering - using DRY fetch() function
+     * Get all reservations with optional filtering - using executeQuery for complex JOIN queries
      */
     public function getAllReservations($search = '', $dateFrom = '', $dateTo = '', $status = 'all') {
-        global $connection;
-        
+        $params = [];
+        $types = '';
         $conditions = [];
         
-        // Search functionality
+        // Search functionality with parameterized query
         if (!empty($search)) {
-            $search = mysqli_real_escape_string($connection, $search);
-            $conditions[] = "(c.first_name LIKE '%$search%' OR c.last_name LIKE '%$search%' OR c.email LIKE '%$search%' OR r.table_number LIKE '%$search%')";
+            $searchPattern = "%$search%";
+            $conditions[] = "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.email LIKE ? OR r.table_number LIKE ?)";
+            $params = array_merge($params, [$searchPattern, $searchPattern, $searchPattern, $searchPattern]);
+            $types .= 'ssss';
         }
         
         // Date range filter
         if (!empty($dateFrom)) {
-            $conditions[] = "DATE(r.reservation_date) >= '$dateFrom'";
+            $conditions[] = "DATE(r.reservation_date) >= ?";
+            $params[] = $dateFrom;
+            $types .= 's';
         }
         if (!empty($dateTo)) {
-            $conditions[] = "DATE(r.reservation_date) <= '$dateTo'";
+            $conditions[] = "DATE(r.reservation_date) <= ?";
+            $params[] = $dateTo;
+            $types .= 's';
         }
         
         // Status filter
         if ($status !== 'all') {
-            $conditions[] = "r.status = '" . mysqli_real_escape_string($connection, $status) . "'";
+            $conditions[] = "r.status = ?";
+            $params[] = $status;
+            $types .= 's';
         }
         
         $whereClause = !empty($conditions) ? ' WHERE ' . implode(' AND ', $conditions) : '';
         
-        // Use complex query since we need JOIN (fetch() is for single table)
+        // Use executeQuery with parameterized query for JOIN
         $sql = "SELECT r.*, c.first_name, c.last_name, c.email 
                 FROM {$this->reservationTable} r 
                 JOIN {$this->customerTable} c ON r.customer_id = c.id 
                 $whereClause
                 ORDER BY r.reservation_date DESC, r.reservation_time DESC";
         
-        $result = mysqli_query($connection, $sql);
-        $reservations = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $reservations[] = $row;
-        }
-        return $reservations;
+        return executeQuery($sql, $params, $types);
     }
     
     /**
@@ -231,44 +234,28 @@ class ReservationManagementController {
      * @return int|null Table number or null if no table available
      */
     private function autoAssignTable($date, $time, $partySize) {
-        global $connection;
-        
         // Define table capacity mapping (this could be moved to database or config)
-        $tableCapacities = [
-            1 => 2,   // Table 1: 2 seats
-            2 => 2,   // Table 2: 2 seats  
-            3 => 4,   // Table 3: 4 seats
-            4 => 4,   // Table 4: 4 seats
-            5 => 4,   // Table 5: 4 seats
-            6 => 6,   // Table 6: 6 seats
-            7 => 6,   // Table 7: 6 seats
-            8 => 8,   // Table 8: 8 seats
-            9 => 8,   // Table 9: 8 seats
-            10 => 10  // Table 10: 10 seats
-        ];
+        $tableCapacities = self::getTableCapacities();
         
         // Get active statuses that occupy tables
         $activeStatuses = self::getActiveStatuses();
         $activeStatusList = "'" . implode("', '", $activeStatuses) . "'";
         
-        // Get occupied tables for the specific date and time (with buffer)
+        // Get occupied tables using executeQuery with parameterized query
         $timeBuffer = 2; // 2 hour buffer before and after
         $sql = "SELECT DISTINCT table_number 
                 FROM {$this->reservationTable} 
-                WHERE reservation_date = '$date' 
+                WHERE reservation_date = ? 
                 AND status IN ($activeStatusList)
                 AND table_number IS NOT NULL
                 AND (
                     (TIME_TO_SEC(reservation_time) BETWEEN 
-                     TIME_TO_SEC('$time') - ($timeBuffer * 3600) AND 
-                     TIME_TO_SEC('$time') + ($timeBuffer * 3600))
+                     TIME_TO_SEC(?) - (? * 3600) AND 
+                     TIME_TO_SEC(?) + (? * 3600))
                 )";
         
-        $result = mysqli_query($connection, $sql);
-        $occupiedTables = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $occupiedTables[] = intval($row['table_number']);
-        }
+        $occupiedTablesResult = executeQuery($sql, [$date, $time, $timeBuffer, $time, $timeBuffer], 'ssisd');
+        $occupiedTables = array_column($occupiedTablesResult, 'table_number');
         
         // Find available tables that can accommodate the party size
         $availableTables = [];
@@ -453,36 +440,28 @@ class ReservationManagementController {
      * @return array Available tables with their capacities
      */
     public function getAvailableTables($date, $time, $partySize) {
-        global $connection;
-        
         // Define table capacity mapping
-        $tableCapacities = [
-            1 => 2, 2 => 2, 3 => 4, 4 => 4, 5 => 4,
-            6 => 6, 7 => 6, 8 => 8, 9 => 8, 10 => 10
-        ];
+        $tableCapacities = self::getTableCapacities();
         
         // Get active statuses that occupy tables
         $activeStatuses = self::getActiveStatuses();
         $activeStatusList = "'" . implode("', '", $activeStatuses) . "'";
         
-        // Get occupied tables for the specific date and time (with buffer)
+        // Get occupied tables using executeQuery with parameterized query
         $timeBuffer = 2; // 2 hour buffer
         $sql = "SELECT DISTINCT table_number 
                 FROM {$this->reservationTable} 
-                WHERE reservation_date = '$date' 
+                WHERE reservation_date = ? 
                 AND status IN ($activeStatusList)
                 AND table_number IS NOT NULL
                 AND (
                     (TIME_TO_SEC(reservation_time) BETWEEN 
-                     TIME_TO_SEC('$time') - ($timeBuffer * 3600) AND 
-                     TIME_TO_SEC('$time') + ($timeBuffer * 3600))
+                     TIME_TO_SEC(?) - (? * 3600) AND 
+                     TIME_TO_SEC(?) + (? * 3600))
                 )";
         
-        $result = mysqli_query($connection, $sql);
-        $occupiedTables = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $occupiedTables[] = intval($row['table_number']);
-        }
+        $occupiedTablesResult = executeQuery($sql, [$date, $time, $timeBuffer, $time, $timeBuffer], 'ssisd');
+        $occupiedTables = array_column($occupiedTablesResult, 'table_number');
         
         // Build available tables array
         $availableTables = [];
