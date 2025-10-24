@@ -3,6 +3,10 @@
  * Event Display Management View
  */
 
+// Require authentication
+require_once '../../controllers/AuthController.php';
+AuthController::requireAuth();
+
 // Include the EventDisplayManagementController
 require_once '../../controllers/EventDisplayManagementController.php';
 
