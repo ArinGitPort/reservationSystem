@@ -2,12 +2,9 @@
 // Set page title before including header
 $page_title = 'Menu - Ellen\'s Food House';
 
-// Include required database functions
-require_once '../config/db_model.php';
-
-// Get menu items
-$getAllMenuItems = fetch('menu', '', 'is_best_seller DESC, name ASC');
-$menuItems = $getAllMenuItems;
+// Use controller to get menu data
+require_once '../controllers/MenuController.php';
+$menuItems = MenuController::getMenuItems();
 
 // Include the header (which contains opening HTML tags)
 include '../includes/header.php'; 

@@ -1,6 +1,7 @@
 <?php
-$configPath = file_exists('../config/db_model.php') ? '../config/db_model.php' : '../../config/db_model.php';
+$configPath = file_exists('../models/db_model.php') ? '../models/db_model.php' : '../../models/db_model.php';
 require_once $configPath;
+require_once __DIR__ . '/ControllerHelper.php';
 
 class AccountManagementController {
     private $customerTable = 'customers';
@@ -30,23 +31,31 @@ class AccountManagementController {
     }
     
     /**
-     * Get all customers with optional filtering - using DRY fetch() function
+     * Get all customers with optional filtering - using executeQuery for complex conditions
      */
     public function getAllCustomers($search = '', $dateFrom = '', $dateTo = '', $status = 'all') {
+        $params = [];
+        $types = '';
         $conditions = [];
         
-        // Search functionality
+        // Search functionality with parameterized query
         if (!empty($search)) {
-            $search = mysqli_real_escape_string($GLOBALS['connection'], $search);
-            $conditions[] = "(first_name LIKE '%$search%' OR last_name LIKE '%$search%' OR email LIKE '%$search%' OR phone LIKE '%$search%')";
+            $searchPattern = "%$search%";
+            $conditions[] = "(first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR phone LIKE ?)";
+            $params = array_merge($params, [$searchPattern, $searchPattern, $searchPattern, $searchPattern]);
+            $types .= 'ssss';
         }
         
         // Date range filter
         if (!empty($dateFrom)) {
-            $conditions[] = "DATE(created_at) >= '$dateFrom'";
+            $conditions[] = "DATE(created_at) >= ?";
+            $params[] = $dateFrom;
+            $types .= 's';
         }
         if (!empty($dateTo)) {
-            $conditions[] = "DATE(created_at) <= '$dateTo'";
+            $conditions[] = "DATE(created_at) <= ?";
+            $params[] = $dateTo;
+            $types .= 's';
         }
         
         // Status filter (active customers with orders vs all)
@@ -56,38 +65,44 @@ class AccountManagementController {
             $conditions[] = "id NOT IN (SELECT DISTINCT customer_id FROM orders WHERE customer_id IS NOT NULL)";
         }
         
-        $whereClause = !empty($conditions) ? implode(' AND ', $conditions) : '';
-        return fetch($this->customerTable, $whereClause, 'created_at DESC');
+        $whereClause = !empty($conditions) ? ' WHERE ' . implode(' AND ', $conditions) : '';
+        $sql = "SELECT * FROM {$this->customerTable} $whereClause ORDER BY created_at DESC";
+        
+        return executeQuery($sql, $params, $types);
     }
     
     /**
-     * Get customer statistics
+     * Get customer statistics - using executeQuery for complex queries
      */
     public function getCustomerStatistics() {
         $stats = [];
         
-        // Total customers
-        $totalCustomers = fetch($this->customerTable);
-        $stats['total_customers'] = $totalCustomers ? count($totalCustomers) : 0;
+        // Use executeQuery() with COUNT instead of fetching all records and counting
+        $sql = "SELECT COUNT(*) as count FROM {$this->customerTable}";
+        $totalCustomersResult = executeQuery($sql, [], '');
+        $stats['total_customers'] = $totalCustomersResult ? $totalCustomersResult[0]['count'] : 0;
         
-        // New customers this month
-        $newThisMonth = fetch($this->customerTable, "DATE(created_at) >= DATE_FORMAT(NOW(), '%Y-%m-01')");
-        $stats['new_this_month'] = $newThisMonth ? count($newThisMonth) : 0;
+        // New customers this month - use executeQuery for date function
+        $firstDayOfMonth = date('Y-m-01');
+        $sql = "SELECT COUNT(*) as count FROM {$this->customerTable} WHERE DATE(created_at) >= ?";
+        $newThisMonthResult = executeQuery($sql, [$firstDayOfMonth], 's');
+        $stats['new_this_month'] = $newThisMonthResult ? $newThisMonthResult[0]['count'] : 0;
         
-        // Active customers (with orders)
-        $activeCustomers = fetch($this->customerTable, "id IN (SELECT DISTINCT customer_id FROM orders WHERE customer_id IS NOT NULL)");
-        $stats['active_customers'] = $activeCustomers ? count($activeCustomers) : 0;
+        // Active customers (with orders) - use executeQuery for complex subquery
+        $sql = "SELECT COUNT(*) as count FROM {$this->customerTable} 
+                WHERE id IN (SELECT DISTINCT customer_id FROM orders WHERE customer_id IS NOT NULL)";
+        $activeCustomersResult = executeQuery($sql, [], '');
+        $stats['active_customers'] = $activeCustomersResult ? $activeCustomersResult[0]['count'] : 0;
         
-        // Top customer by order count
-        $topCustomerQuery = "SELECT c.first_name, c.last_name, COUNT(o.order_id) as order_count 
-                           FROM customers c 
-                           LEFT JOIN orders o ON c.id = o.customer_id 
-                           GROUP BY c.id 
-                           ORDER BY order_count DESC 
-                           LIMIT 1";
-        global $connection;
-        $result = mysqli_query($connection, $topCustomerQuery);
-        $topCustomer = mysqli_fetch_assoc($result);
+        // Top customer by order count - use executeQuery for JOIN with GROUP BY
+        $sql = "SELECT c.first_name, c.last_name, COUNT(o.order_id) as order_count 
+                FROM customers c 
+                LEFT JOIN orders o ON c.id = o.customer_id 
+                GROUP BY c.id 
+                ORDER BY order_count DESC 
+                LIMIT 1";
+        $topCustomerResult = executeQuery($sql, [], '');
+        $topCustomer = $topCustomerResult ? $topCustomerResult[0] : null;
         $stats['top_customer'] = $topCustomer ? $topCustomer['first_name'] . ' ' . $topCustomer['last_name'] . ' (' . $topCustomer['order_count'] . ' orders)' : 'N/A';
         
         return $stats;
@@ -119,8 +134,9 @@ class AccountManagementController {
             return $this->redirectWithError("Please enter a valid email address.");
         }
         
-        // Check if email already exists
-        $existingCustomer = fetch($this->customerTable, "email = '$email'");
+        // Check if email already exists using executeQuery
+        $sql = "SELECT * FROM {$this->customerTable} WHERE email = ?";
+        $existingCustomer = executeQuery($sql, [$email], 's');
         if (!empty($existingCustomer)) {
             return $this->redirectWithError("Email already exists. Please use a different email.");
         }
@@ -135,7 +151,7 @@ class AccountManagementController {
             'created_at' => date('Y-m-d H:i:s')
         ];
         
-        // Insert customer with automatic image handling using save function
+        // Insert customer using save function (note: file handling is in save if needed)
         $customerId = save($this->customerTable, $customerData, $this->profileImageField);
         
         if ($customerId) {
@@ -164,8 +180,9 @@ class AccountManagementController {
             return $this->redirectWithError("Please enter a valid email address.");
         }
         
-        // Check if email exists for other customers
-        $existingCustomer = fetch($this->customerTable, "email = '$email' AND id != $id");
+        // Check if email exists for other customers using selectData with parameterized query
+        $sql = "SELECT * FROM {$this->customerTable} WHERE email = ? AND id != ?";
+        $existingCustomer = executeQuery($sql, [$email, $id], 'si');
         if (!empty($existingCustomer)) {
             return $this->redirectWithError("Email already exists. Please use a different email.");
         }

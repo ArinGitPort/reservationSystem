@@ -1,12 +1,10 @@
 <?php
-$configPath = file_exists('../config/db_model.php') ? '../config/db_model.php' : '../../config/db_model.php';
+$configPath = file_exists('../models/db_model.php') ? '../models/db_model.php' : '../../models/db_model.php';
 require_once $configPath;
+require_once __DIR__ . '/ControllerHelper.php';
 
 class MenuManagementController {
     private $menuTable = 'menu';
-    private $uploadPath = '../../uploads/menu/';
-    private $allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-    private $maxFileSize = 2097152; // 2MB in bytes
     
     /**
      * Handle all POST requests for menu management
@@ -35,18 +33,16 @@ class MenuManagementController {
     public function getAllMenuItems($search = '', $category = 'all', $bestSeller = 'all') {
         $conditions = [];
         
-        // Search functionality
+        // Search functionality - simple string building for fetch()
         if (!empty($search)) {
-            global $connection;
-            $search = mysqli_real_escape_string($connection, $search);
-            $conditions[] = "(name LIKE '%$search%' OR CAST(price AS CHAR) LIKE '%$search%')";
+            $searchEscaped = str_replace("'", "''", $search);
+            $conditions[] = "(name LIKE '%$searchEscaped%' OR CAST(price AS CHAR) LIKE '%$searchEscaped%')";
         }
         
-        // Category filter (if categories are added in future)
+        // Category filter
         if ($category !== 'all' && !empty($category)) {
-            global $connection;
-            $category = mysqli_real_escape_string($connection, $category);
-            $conditions[] = "category = '$category'";
+            $categoryEscaped = str_replace("'", "''", $category);
+            $conditions[] = "category = '$categoryEscaped'";
         }
         
         // Best seller filter
@@ -57,7 +53,7 @@ class MenuManagementController {
         
         $whereClause = !empty($conditions) ? implode(' AND ', $conditions) : '';
         
-        // Use DRY fetch() function
+        // Use simple fetch() function - much better than complex executeQuery()
         return fetch($this->menuTable, $whereClause, 'name ASC');
     }
     
@@ -68,14 +64,15 @@ class MenuManagementController {
         $totalItems = count(fetch($this->menuTable));
         $bestSellers = count(fetch($this->menuTable, 'is_best_seller = 1'));
         
-        // Calculate average price
-        global $connection;
-        $avgPriceResult = mysqli_query($connection, "SELECT AVG(price) as avg_price FROM {$this->menuTable}");
-        $avgPrice = mysqli_fetch_assoc($avgPriceResult)['avg_price'] ?? 0;
+        // Use executeQuery() for price statistics instead of direct queries
+        $sql = "SELECT AVG(price) as avg_price FROM {$this->menuTable}";
+        $avgPriceResult = executeQuery($sql, [], '');
+        $avgPrice = $avgPriceResult ? $avgPriceResult[0]['avg_price'] : 0;
         
-        // Get price range
-        $priceRangeResult = mysqli_query($connection, "SELECT MIN(price) as min_price, MAX(price) as max_price FROM {$this->menuTable}");
-        $priceRange = mysqli_fetch_assoc($priceRangeResult);
+        // Get price range using executeQuery()
+        $sql = "SELECT MIN(price) as min_price, MAX(price) as max_price FROM {$this->menuTable}";
+        $priceRangeResult = executeQuery($sql, [], '');
+        $priceRange = $priceRangeResult ? $priceRangeResult[0] : ['min_price' => 0, 'max_price' => 0];
         
         return [
             'total_items' => $totalItems,
@@ -100,8 +97,9 @@ class MenuManagementController {
             return $this->redirectWithError("Please provide valid menu item details.");
         }
         
-        // Check for duplicate names
-        $existingItem = fetch($this->menuTable, "name = '" . mysqli_real_escape_string($GLOBALS['connection'], $name) . "'");
+        // Check for duplicate names using executeQuery with parameterized query
+        $sql = "SELECT * FROM {$this->menuTable} WHERE name = ?";
+        $existingItem = executeQuery($sql, [$name], 's');
         if (!empty($existingItem)) {
             return $this->redirectWithError("A menu item with this name already exists.");
         }
@@ -154,8 +152,10 @@ class MenuManagementController {
             return $this->redirectWithError("Menu item not found.");
         }
         
-        // Check for duplicate names (excluding current item)
-        $duplicateCheck = fetch($this->menuTable, "name = '" . mysqli_real_escape_string($GLOBALS['connection'], $name) . "' AND menu_id != $menuId");
+        // Check for duplicate names using executeQuery to avoid current item
+        $sql = "SELECT * FROM {$this->menuTable} WHERE name = ? AND menu_id != ?";
+        $duplicateCheck = executeQuery($sql, [$name, $menuId], 'si');
+        
         if (!empty($duplicateCheck)) {
             return $this->redirectWithError("A menu item with this name already exists.");
         }
@@ -264,7 +264,7 @@ class MenuManagementController {
     }
     
     /**
-     * Handle image upload with validation
+     * DRY: Handle image upload with validation using config constants
      */
     private function handleImageUpload($fileInputName, $menuId = null) {
         if (!isset($_FILES[$fileInputName]) || $_FILES[$fileInputName]['error'] !== 0) {
@@ -272,20 +272,22 @@ class MenuManagementController {
         }
         
         $file = $_FILES[$fileInputName];
+        $allowedTypes = UPLOAD_CONFIG['allowed_image_types'];
+        $maxSize = UPLOAD_CONFIG['max_file_size'];
+        $uploadPath = UPLOAD_CONFIG['base_path'] . 'menu/';
         
-        // Validate file type
-        if (!in_array($file['type'], $this->allowedImageTypes)) {
+        // DRY: Validate using config constants
+        if (!in_array($file['type'], $allowedTypes)) {
             return false;
         }
         
-        // Validate file size
-        if ($file['size'] > $this->maxFileSize) {
+        if ($file['size'] > $maxSize) {
             return false;
         }
         
         // Create upload directory if it doesn't exist
-        if (!is_dir($this->uploadPath)) {
-            mkdir($this->uploadPath, 0755, true);
+        if (!is_dir($uploadPath)) {
+            mkdir($uploadPath, 0755, true);
         }
         
         // Generate filename
@@ -298,7 +300,7 @@ class MenuManagementController {
         }
         
         // Move uploaded file
-        if (move_uploaded_file($file['tmp_name'], $this->uploadPath . $filename)) {
+        if (move_uploaded_file($file['tmp_name'], $uploadPath . $filename)) {
             return $filename;
         }
         
@@ -306,7 +308,7 @@ class MenuManagementController {
     }
     
     /**
-     * Update menu item image after initial save
+     * DRY: Update menu item image after initial save using generic update
      */
     private function updateMenuImage($menuId, $fileInputName) {
         $imagePath = $this->handleImageUpload($fileInputName, $menuId);
@@ -316,12 +318,13 @@ class MenuManagementController {
     }
     
     /**
-     * Delete image file from filesystem
+     * DRY: Delete image file using unified delete() function from db_model
      */
     private function deleteImageFile($imagePath) {
-        if ($imagePath && file_exists($this->uploadPath . $imagePath)) {
-            unlink($this->uploadPath . $imagePath);
+        if ($imagePath) {
+            return delete($imagePath, 'menu');
         }
+        return false;
     }
     
     /**
@@ -346,18 +349,13 @@ class MenuManagementController {
         exit;
     }
     
-    /**
-     * Redirect with success message
-     */
+    // DRY: Redirect methods now use generic functions from ControllerHelper.php
     private function redirectWithSuccess($message) {
-        return redirect_with_message($_SERVER['PHP_SELF'], $message, "success");
+        return redirect_with_success($message);
     }
     
-    /**
-     * Redirect with error message
-     */
     private function redirectWithError($message) {
-        return redirect_with_message($_SERVER['PHP_SELF'], $message, "error");
+        return redirect_with_error($message);
     }
 }
 ?>

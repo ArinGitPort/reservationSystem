@@ -1,5 +1,7 @@
 <?php
-session_start();
+// Require authentication
+require_once '../../controllers/AuthController.php';
+AuthController::requireAuth();
 // This is a pure VIEW file - no backend logic here
 // All data fetching is handled via AJAX calls to OrderController.php
 ?>

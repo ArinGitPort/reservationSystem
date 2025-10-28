@@ -1,6 +1,7 @@
 <?php
-$configPath = file_exists('../config/db_model.php') ? '../config/db_model.php' : '../../config/db_model.php';
+$configPath = file_exists('../models/db_model.php') ? '../models/db_model.php' : '../../models/db_model.php';
 require_once $configPath;
+require_once __DIR__ . '/ControllerHelper.php';
 
 class ReservationManagementController {
     private $reservationTable = 'reservations';
@@ -60,47 +61,50 @@ class ReservationManagementController {
     }
     
     /**
-     * Get all reservations with optional filtering - using DRY fetch() function
+     * Get all reservations with optional filtering - using executeQuery for complex JOIN queries
      */
     public function getAllReservations($search = '', $dateFrom = '', $dateTo = '', $status = 'all') {
-        global $connection;
-        
+        $params = [];
+        $types = '';
         $conditions = [];
         
-        // Search functionality
+        // Search functionality with parameterized query
         if (!empty($search)) {
-            $search = mysqli_real_escape_string($connection, $search);
-            $conditions[] = "(c.first_name LIKE '%$search%' OR c.last_name LIKE '%$search%' OR c.email LIKE '%$search%' OR r.table_number LIKE '%$search%')";
+            $searchPattern = "%$search%";
+            $conditions[] = "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.email LIKE ? OR r.table_number LIKE ?)";
+            $params = array_merge($params, [$searchPattern, $searchPattern, $searchPattern, $searchPattern]);
+            $types .= 'ssss';
         }
         
         // Date range filter
         if (!empty($dateFrom)) {
-            $conditions[] = "DATE(r.reservation_date) >= '$dateFrom'";
+            $conditions[] = "DATE(r.reservation_date) >= ?";
+            $params[] = $dateFrom;
+            $types .= 's';
         }
         if (!empty($dateTo)) {
-            $conditions[] = "DATE(r.reservation_date) <= '$dateTo'";
+            $conditions[] = "DATE(r.reservation_date) <= ?";
+            $params[] = $dateTo;
+            $types .= 's';
         }
         
         // Status filter
         if ($status !== 'all') {
-            $conditions[] = "r.status = '" . mysqli_real_escape_string($connection, $status) . "'";
+            $conditions[] = "r.status = ?";
+            $params[] = $status;
+            $types .= 's';
         }
         
         $whereClause = !empty($conditions) ? ' WHERE ' . implode(' AND ', $conditions) : '';
         
-        // Use complex query since we need JOIN (fetch() is for single table)
+        // Use executeQuery with parameterized query for JOIN
         $sql = "SELECT r.*, c.first_name, c.last_name, c.email 
                 FROM {$this->reservationTable} r 
                 JOIN {$this->customerTable} c ON r.customer_id = c.id 
                 $whereClause
                 ORDER BY r.reservation_date DESC, r.reservation_time DESC";
         
-        $result = mysqli_query($connection, $sql);
-        $reservations = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $reservations[] = $row;
-        }
-        return $reservations;
+        return executeQuery($sql, $params, $types);
     }
     
     /**
@@ -136,7 +140,7 @@ class ReservationManagementController {
     }
     
     /**
-     * Add reservation with validation
+     * Add reservation with validation and auto-assignment
      */
     private function addReservation() {
         $customerId = intval($_POST['customer_id'] ?? 0);
@@ -168,8 +172,14 @@ class ReservationManagementController {
             return $this->redirectWithError("Customer already has a reservation at this date and time.");
         }
         
-        // Check table availability if table number specified
-        if ($tableNumber) {
+        // Auto-assign table number if not provided
+        if (!$tableNumber) {
+            $tableNumber = $this->autoAssignTable($reservationDate, $reservationTime, $partySize);
+            if (!$tableNumber) {
+                return $this->redirectWithError("No available tables found for the selected date and time. Please choose a different time or specify a table number manually.");
+            }
+        } else {
+            // Check table availability if table number specified
             $activeStatuses = "'" . implode("', '", self::getActiveStatuses()) . "'";
             $tableConflict = fetch($this->reservationTable, "table_number = $tableNumber AND reservation_date = '$reservationDate' AND reservation_time = '$reservationTime' AND status IN ($activeStatuses)");
             if ($tableConflict) {
@@ -177,25 +187,105 @@ class ReservationManagementController {
             }
         }
         
-        // Prepare data for insertion using generic save function
-        $reservationData = [
-            'customer_id' => $customerId,
-            'reservation_date' => $reservationDate,
-            'reservation_time' => $reservationTime,
-            'party_size' => $partySize,
-            'table_number' => $tableNumber,
-            'special_requests' => $specialRequests,
-            'status' => 'pending',
-            'created_at' => date('Y-m-d H:i:s')
-        ];
+        // Begin transaction for atomic operation
+        beginTransaction();
         
-        $reservationId = save($this->reservationTable, $reservationData);
-        
-        if ($reservationId) {
-            return $this->redirectWithSuccess("Reservation added successfully!");
-        } else {
-            return $this->redirectWithError("Failed to add reservation. Please try again.");
+        try {
+            // Prepare data for insertion using generic save function
+            $reservationData = [
+                'customer_id' => $customerId,
+                'reservation_date' => $reservationDate,
+                'reservation_time' => $reservationTime,
+                'party_size' => $partySize,
+                'table_number' => $tableNumber,
+                'special_requests' => $specialRequests,
+                'status' => 'pending',
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+            
+            $reservationId = save($this->reservationTable, $reservationData);
+            
+            if (!$reservationId) {
+                throw new Exception("Failed to create reservation.");
+            }
+            
+            commitTransaction();
+            
+            $message = "Reservation added successfully!";
+            if ($_POST['table_number'] === '') {
+                $message .= " Table {$tableNumber} has been automatically assigned.";
+            }
+            
+            return $this->redirectWithSuccess($message);
+            
+        } catch (Exception $e) {
+            rollbackTransaction();
+            return $this->redirectWithError("Failed to add reservation: " . $e->getMessage());
         }
+    }
+    
+    /**
+     * Auto-assign table number based on availability and party size
+     * Uses active status data to determine which tables are occupied
+     * 
+     * @param string $date Reservation date
+     * @param string $time Reservation time  
+     * @param int $partySize Number of people
+     * @return int|null Table number or null if no table available
+     */
+    private function autoAssignTable($date, $time, $partySize) {
+        // Define table capacity mapping (this could be moved to database or config)
+        $tableCapacities = self::getTableCapacities();
+        
+        // Get active statuses that occupy tables
+        $activeStatuses = self::getActiveStatuses();
+        $activeStatusList = "'" . implode("', '", $activeStatuses) . "'";
+        
+        // Get occupied tables using executeQuery with parameterized query
+        $timeBuffer = 2; // 2 hour buffer before and after
+        $sql = "SELECT DISTINCT table_number 
+                FROM {$this->reservationTable} 
+                WHERE reservation_date = ? 
+                AND status IN ($activeStatusList)
+                AND table_number IS NOT NULL
+                AND (
+                    (TIME_TO_SEC(reservation_time) BETWEEN 
+                     TIME_TO_SEC(?) - (? * 3600) AND 
+                     TIME_TO_SEC(?) + (? * 3600))
+                )";
+        
+        $occupiedTablesResult = executeQuery($sql, [$date, $time, $timeBuffer, $time, $timeBuffer], 'ssisd');
+        $occupiedTables = array_column($occupiedTablesResult, 'table_number');
+        
+        // Find available tables that can accommodate the party size
+        $availableTables = [];
+        foreach ($tableCapacities as $tableNumber => $capacity) {
+            if (!in_array($tableNumber, $occupiedTables) && $capacity >= $partySize) {
+                $availableTables[] = $tableNumber;
+            }
+        }
+        
+        if (empty($availableTables)) {
+            return null; // No available tables
+        }
+        
+        // Sort by capacity (prefer smaller tables that still fit the party)
+        usort($availableTables, function($a, $b) use ($tableCapacities, $partySize) {
+            $capacityA = $tableCapacities[$a];
+            $capacityB = $tableCapacities[$b];
+            
+            // Calculate "waste" (unused seats)
+            $wasteA = $capacityA - $partySize;
+            $wasteB = $capacityB - $partySize;
+            
+            // Prefer table with less waste, then smaller table number
+            if ($wasteA == $wasteB) {
+                return $a - $b;
+            }
+            return $wasteA - $wasteB;
+        });
+        
+        return $availableTables[0]; // Return the best available table
     }
     
     /**
@@ -340,6 +430,78 @@ class ReservationManagementController {
     }
     
 
+    /**
+     * Get available tables for a specific date, time, and party size
+     * This method can be called via AJAX for real-time table availability
+     * 
+     * @param string $date Reservation date
+     * @param string $time Reservation time
+     * @param int $partySize Number of people
+     * @return array Available tables with their capacities
+     */
+    public function getAvailableTables($date, $time, $partySize) {
+        // Define table capacity mapping
+        $tableCapacities = self::getTableCapacities();
+        
+        // Get active statuses that occupy tables
+        $activeStatuses = self::getActiveStatuses();
+        $activeStatusList = "'" . implode("', '", $activeStatuses) . "'";
+        
+        // Get occupied tables using executeQuery with parameterized query
+        $timeBuffer = 2; // 2 hour buffer
+        $sql = "SELECT DISTINCT table_number 
+                FROM {$this->reservationTable} 
+                WHERE reservation_date = ? 
+                AND status IN ($activeStatusList)
+                AND table_number IS NOT NULL
+                AND (
+                    (TIME_TO_SEC(reservation_time) BETWEEN 
+                     TIME_TO_SEC(?) - (? * 3600) AND 
+                     TIME_TO_SEC(?) + (? * 3600))
+                )";
+        
+        $occupiedTablesResult = executeQuery($sql, [$date, $time, $timeBuffer, $time, $timeBuffer], 'ssisd');
+        $occupiedTables = array_column($occupiedTablesResult, 'table_number');
+        
+        // Build available tables array
+        $availableTables = [];
+        foreach ($tableCapacities as $tableNumber => $capacity) {
+            if (!in_array($tableNumber, $occupiedTables)) {
+                $availableTables[] = [
+                    'table_number' => $tableNumber,
+                    'capacity' => $capacity,
+                    'suitable' => $capacity >= $partySize,
+                    'waste_seats' => max(0, $capacity - $partySize)
+                ];
+            }
+        }
+        
+        // Sort by suitability first, then by waste (efficiency)
+        usort($availableTables, function($a, $b) {
+            if ($a['suitable'] != $b['suitable']) {
+                return $b['suitable'] - $a['suitable']; // Suitable tables first
+            }
+            if ($a['suitable']) {
+                return $a['waste_seats'] - $b['waste_seats']; // Less waste first
+            }
+            return $b['capacity'] - $a['capacity']; // Larger capacity first for unsuitable
+        });
+        
+        return $availableTables;
+    }
+    
+    /**
+     * Get table capacity information
+     * 
+     * @return array Table number to capacity mapping
+     */
+    public static function getTableCapacities() {
+        return [
+            1 => 2, 2 => 2, 3 => 4, 4 => 4, 5 => 4,
+            6 => 6, 7 => 6, 8 => 8, 9 => 8, 10 => 10
+        ];
+    }
+    
     
     private function redirectWithSuccess($message) {
         return redirect_with_message($_SERVER['PHP_SELF'], $message, "success");

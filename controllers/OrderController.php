@@ -4,7 +4,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 // Handle different calling contexts (direct vs from admin pages)
-$configPath = file_exists('../config/db_model.php') ? '../config/db_model.php' : '../../config/db_model.php';
+$configPath = file_exists('../models/db_model.php') ? '../models/db_model.php' : '../../models/db_model.php';
 require_once $configPath;
 
 class OrderController {
@@ -76,20 +76,22 @@ class OrderController {
      */
     private static function testConnection() {
         try {
-            $db = require_once __DIR__ . '/../config/db_model.php';
+            global $connection;
             
-            // Test basic connection
-            $result = fetch("SELECT 1 as test");
+            // Test basic connection using executeQuery
+            $sql = "SELECT 1 as test FROM orders LIMIT 1";
+            $result = executeQuery($sql, [], '');
             
-            // Test orders table
-            $orders = fetch("SELECT COUNT(*) as count FROM orders");
+            // Test orders table count
+            $sql = "SELECT COUNT(*) as count FROM orders";
+            $ordersCount = executeQuery($sql, [], '');
             
             echo json_encode([
                 'success' => true,
                 'message' => 'Connection successful',
                 'data' => [
                     'connection_test' => $result,
-                    'orders_count' => $orders
+                    'orders_count' => $ordersCount ? $ordersCount[0]['count'] : 0
                 ]
             ]);
         } catch (Exception $e) {
@@ -105,16 +107,17 @@ class OrderController {
             $statusCounts = [];
             $statuses = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
             
+            // Use executeQuery() with COUNT for efficiency
             foreach ($statuses as $status) {
-                $orders = fetch('orders', "order_status = '$status'");
-                $statusCounts[$status] = $orders ? count($orders) : 0;
+                $sql = "SELECT COUNT(*) as count FROM orders WHERE order_status = ?";
+                $result = executeQuery($sql, [$status], 's');
+                $statusCounts[$status] = $result ? $result[0]['count'] : 0;
             }
             
-            $todayOrders = fetch('orders', "DATE(order_date) = CURDATE()");
-            $todaysData = [
-                'order_count' => $todayOrders ? count($todayOrders) : 0,
-                'total_revenue' => $todayOrders ? array_sum(array_column($todayOrders, 'total_amount')) : 0
-            ];
+            // Use executeQuery() for today's statistics with aggregate functions
+            $sql = "SELECT COUNT(*) as order_count, COALESCE(SUM(total_amount), 0) as total_revenue FROM orders WHERE DATE(order_date) = ?";
+            $todayStats = executeQuery($sql, [date('Y-m-d')], 's');
+            $todaysData = $todayStats ? $todayStats[0] : ['order_count' => 0, 'total_revenue' => 0];
             
             echo json_encode(['success' => true, 'statusCounts' => $statusCounts, 'todaysData' => $todaysData]);
         } catch (Exception $e) {
@@ -123,24 +126,35 @@ class OrderController {
     }
     
     /**
-     * Get orders list with filtering - using db_model fetch()
+     * Get orders list with filtering - using selectData() and executeQuery()
      */
     private static function getOrders() {
         try {
             $searchTerm = $_GET['search'] ?? '';
             $statusFilter = $_GET['status'] ?? '';
             
-            $conditions = [];
-            if ($searchTerm) {
-                $searchTerm = mysqli_real_escape_string($GLOBALS['connection'], $searchTerm);
-                $conditions[] = "(customer_name LIKE '%$searchTerm%' OR customer_email LIKE '%$searchTerm%' OR customer_phone LIKE '%$searchTerm%')";
+            if ($searchTerm && $statusFilter) {
+                // Complex query with search and status filter - use executeQuery with parameterized query
+                $searchPattern = "%$searchTerm%";
+                $sql = "SELECT * FROM orders 
+                        WHERE (customer_name LIKE ? OR customer_email LIKE ? OR customer_phone LIKE ?) 
+                        AND order_status = ? 
+                        ORDER BY order_date DESC";
+                $orders = executeQuery($sql, [$searchPattern, $searchPattern, $searchPattern, $statusFilter], 'ssss');
+            } else if ($searchTerm) {
+                // Search only - use executeQuery with parameterized query
+                $searchPattern = "%$searchTerm%";
+                $sql = "SELECT * FROM orders 
+                        WHERE customer_name LIKE ? OR customer_email LIKE ? OR customer_phone LIKE ? 
+                        ORDER BY order_date DESC";
+                $orders = executeQuery($sql, [$searchPattern, $searchPattern, $searchPattern], 'sss');
+            } else if ($statusFilter) {
+                // Use fetch() for simple status filter
+                $orders = fetch('orders', "order_status = '$statusFilter'", 'order_date DESC');
+            } else {
+                // Use fetch() for all orders
+                $orders = fetch('orders', '', 'order_date DESC');
             }
-            if ($statusFilter) {
-                $conditions[] = "order_status = '" . mysqli_real_escape_string($GLOBALS['connection'], $statusFilter) . "'";
-            }
-            
-            $whereClause = implode(' AND ', $conditions);
-            $orders = fetch('orders', $whereClause, 'order_date DESC');
             
             echo json_encode(['success' => true, 'orders' => $orders ? $orders : []]);
         } catch (Exception $e) {
@@ -249,7 +263,7 @@ class OrderController {
     }
 
     /**
-     * Delete order - using DRY delete() function
+     * Delete order - using DRY delete() and executeQuery functions
      */
     private static function deleteOrder() {
         $orderId = $_POST['order_id'] ?? $_GET['order_id'] ?? 0;
@@ -273,44 +287,26 @@ class OrderController {
                 return;
             }
             
-            // Delete order items first (foreign key constraint)
-            global $connection;
+            // Use transaction for atomic operation
+            beginTransaction();
             
-            $deleteItemsQuery = "DELETE FROM order_items WHERE order_id = ?";
-            $stmt = mysqli_prepare($connection, $deleteItemsQuery);
-            
-            if (!$stmt) {
-                echo json_encode(['success' => false, 'message' => 'Failed to delete order items']);
-                return;
-            }
-            
-            mysqli_stmt_bind_param($stmt, "i", $orderId);
-            $itemsDeleteResult = mysqli_stmt_execute($stmt);
-            mysqli_stmt_close($stmt);
-            
-            if (!$itemsDeleteResult) {
-                echo json_encode(['success' => false, 'message' => 'Failed to delete order items']);
-                return;
-            }
-            
-            // Delete the main order
-            $deleteOrderQuery = "DELETE FROM orders WHERE order_id = ?";
-            $orderStmt = mysqli_prepare($connection, $deleteOrderQuery);
-            
-            if (!$orderStmt) {
-                echo json_encode(['success' => false, 'message' => 'Failed to delete order']);
-                return;
-            }
-            
-            mysqli_stmt_bind_param($orderStmt, "i", $orderId);
-            $result = mysqli_stmt_execute($orderStmt);
-            $orderAffectedRows = mysqli_stmt_affected_rows($orderStmt);
-            mysqli_stmt_close($orderStmt);
-            
-            if ($result && $orderAffectedRows > 0) {
-                echo json_encode(['success' => true, 'message' => 'Order deleted successfully']);
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Failed to delete order']);
+            try {
+                // Delete order items first using executeQuery (foreign key constraint)
+                $deleteItemsSql = "DELETE FROM order_items WHERE order_id = ?";
+                executeQuery($deleteItemsSql, [$orderId], 'i');
+                
+                // Delete the main order using DRY delete() function
+                $result = delete('orders', $orderId, 'order_id');
+                
+                if ($result) {
+                    commitTransaction();
+                    echo json_encode(['success' => true, 'message' => 'Order deleted successfully']);
+                } else {
+                    throw new Exception('Failed to delete order');
+                }
+            } catch (Exception $e) {
+                rollbackTransaction();
+                throw $e;
             }
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'message' => 'Error deleting order: ' . $e->getMessage()]);
@@ -382,11 +378,13 @@ class OrderController {
     }
     
     /**
-     * Get or create customer - using db_model fetch() and save()
+     * Get or create customer - using selectData() with parameterized query
      */
     private static function getOrCreateCustomer($input) {
         if (!empty($input['customer_email'])) {
-            $existing = fetch('customers', "email = '" . mysqli_real_escape_string($GLOBALS['connection'], $input['customer_email']) . "'");
+            // Use executeQuery() instead of manual escaping
+            $sql = "SELECT * FROM customers WHERE email = ?";
+            $existing = executeQuery($sql, [$input['customer_email']], 's');
             if ($existing) return $existing[0]['id'];
         }
         

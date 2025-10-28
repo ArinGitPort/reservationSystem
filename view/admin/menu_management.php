@@ -1,4 +1,8 @@
 <?php
+// Require authentication
+require_once '../../controllers/AuthController.php';
+AuthController::requireAuth();
+
 // Include the MenuManagementController
 require_once '../../controllers/MenuManagementController.php';
 require_once '../../includes/search_filter.php';

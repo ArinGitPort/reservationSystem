@@ -1,4 +1,8 @@
 <?php
+// Require authentication
+require_once '../../controllers/AuthController.php';
+AuthController::requireAuth();
+
 // Include the ReservationManagementController
 require_once '../../controllers/ReservationManagementController.php';
 

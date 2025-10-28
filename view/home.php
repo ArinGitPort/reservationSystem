@@ -1,17 +1,12 @@
 <?php 
 $page_title = 'Ellen\'s Food House | Home';
-require_once '../config/db_model.php';
+require_once '../controllers/HomeController.php';
 
-// Get active banners for carousel and auto-deactivate expired events
-$today = date('Y-m-d');
+// Use controller to handle business logic
+HomeController::deactivateExpiredBanners();
+$activeBanners = HomeController::getActiveBanners();
 
-// First, automatically deactivate expired events using enhanced update function
-update('banners', ['active' => 0], "event_end_date < '{$today}' AND active = 1");
-
-// Get active banners that are currently running or upcoming using enhanced fetch function
-$activeBanners = fetch('banners', "active = 1 AND (event_end_date >= '{$today}' OR event_end_date IS NULL)", "event_start_date ASC, date_uploaded DESC");
 include '../includes/header.php';
-
 ?>
 
     <!-- Main Content -->
@@ -158,7 +153,7 @@ include '../includes/header.php';
                     <h4>Follow Us</h4>
                     <p>Stay connected for updates and special offers</p>
                     <div style="margin-top: 1rem;">
-                        <a href="#" style="margin-right: 1rem;"><i class="fab fa-facebook fa-lg"></i></a>
+                        <a href="https://www.facebook.com/profile.php?id=100067114307567" style="margin-right: 1rem;"><i class="fab fa-facebook fa-lg"></i></a>
                         <a href="#" style="margin-right: 1rem;"><i class="fab fa-instagram fa-lg"></i></a>
                         <a href="#"><i class="fab fa-twitter fa-lg"></i></a>
                     </div>

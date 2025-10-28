@@ -1,3 +1,9 @@
+<?php
+// Start session and get user info
+require_once __DIR__ . '/../controllers/AuthController.php';
+AuthController::startSession();
+$currentUser = AuthController::getCurrentUser();
+?>
 <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
 <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
@@ -80,11 +86,27 @@
     </div>
     
     <div class="sidebar-footer">
-        <div class="admin-info">
-            <i class="fas fa-user-shield me-2"></i>
-            <span>Administrator</span>
-        </div>
-        <small class="text-muted">Version 1.0</small>
+        <?php if ($currentUser): ?>
+            <div class="admin-info mb-2">
+                <i class="fas fa-user-circle me-2"></i>
+                <div>
+                    <strong><?php echo htmlspecialchars($currentUser['full_name']); ?></strong>
+                    <small class="d-block text-muted"><?php echo ucfirst($currentUser['role']); ?></small>
+                </div>
+            </div>
+            <form method="POST" action="../../controllers/AuthController.php" style="margin: 0;">
+                <input type="hidden" name="action" value="logout">
+                <button type="submit" class="btn btn-danger btn-sm w-100">
+                    <i class="fas fa-sign-out-alt me-2"></i>Logout
+                </button>
+            </form>
+        <?php else: ?>
+            <div class="admin-info">
+                <i class="fas fa-user-shield me-2"></i>
+                <span>Administrator</span>
+            </div>
+        <?php endif; ?>
+        <small class="text-muted d-block mt-2">Version 1.0</small>
     </div>
 </div>
 

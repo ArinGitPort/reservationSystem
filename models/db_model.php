@@ -1,0 +1,466 @@
+<?php
+/**
+ * Database Model - Pure Data Layer (MVC Compliant)
+ * 
+ * This file contains ONLY database operations and data retrieval.
+ * NO HTML rendering or business logic should be in this file.
+ * 
+ * All database credentials are externalized to config.php
+ */
+
+// Load external configuration
+require_once __DIR__ . '/../config/config.php';
+
+// Database connection using external configuration
+$dbConfig = DB_CONFIG;
+$connection = mysqli_connect(
+    $dbConfig['server'], 
+    $dbConfig['username'], 
+    $dbConfig['password'], 
+    $dbConfig['database']
+);
+
+if (mysqli_connect_errno()) {
+    die("Database connection failed: " .
+        mysqli_connect_error() .
+        "(" . mysqli_connect_errno() . ")"
+    );
+}
+
+// Set charset
+mysqli_set_charset($connection, $dbConfig['charset']);
+
+//display
+//fetch all records from a table - pure data retrieval
+function fetch($table, $conditions = '', $orderBy = '', $limit = '') {
+    global $connection;
+    
+    $sql = "SELECT * FROM $table";
+    
+    if (!empty($conditions)) {
+        $sql .= " WHERE $conditions";
+    }
+    
+    if (!empty($orderBy)) {
+        $sql .= " ORDER BY $orderBy";
+    }
+    
+    if (!empty($limit)) {
+        $sql .= " LIMIT $limit";
+    }
+    
+    $result = mysqli_query($connection, $sql);
+    $data = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $data[] = $row;
+    }
+    return $data;
+}
+
+/**
+ * Execute parameterized query safely
+ */
+function executeQuery($sql, $params = [], $types = '') {
+    global $connection;
+    
+    $stmt = mysqli_prepare($connection, $sql);
+    
+    if (!$stmt) {
+        throw new Exception("Query preparation failed: " . mysqli_error($connection));
+    }
+    
+    // Bind parameters if any
+    if (!empty($params)) {
+        mysqli_stmt_bind_param($stmt, $types, ...$params);
+    }
+    
+    if (!mysqli_stmt_execute($stmt)) {
+        $error = mysqli_stmt_error($stmt);
+        mysqli_stmt_close($stmt);
+        throw new Exception("Query execution failed: " . $error);
+    }
+    
+    $result = mysqli_stmt_get_result($stmt);
+    $data = [];
+    
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $data[] = $row;
+        }
+    }
+    
+    mysqli_stmt_close($stmt);
+    return $data;
+}
+
+/**
+ * Get parameter type for prepared statement
+ */
+function getParamType($value) {
+    if (is_int($value)) {
+        return 'i';
+    } elseif (is_float($value)) {
+        return 'd';
+    } else {
+        return 's';
+    }
+}
+
+/**
+ * Begin database transaction for atomic operations
+ */
+function beginTransaction() {
+    global $connection;
+    return mysqli_autocommit($connection, false);
+}
+
+/**
+ * Commit database transaction
+ */
+function commitTransaction() {
+    global $connection;
+    $result = mysqli_commit($connection);
+    mysqli_autocommit($connection, true);
+    return $result;
+}
+
+/**
+ * Rollback database transaction
+ */
+function rollbackTransaction() {
+    global $connection;
+    $result = mysqli_rollback($connection);
+    mysqli_autocommit($connection, true);
+    return $result;
+}
+
+
+//data retrieval
+function display_all_data($sql, $column_mappings = [], $format = 'simple') {
+    global $connection;
+    $result = mysqli_query($connection, $sql);
+    $data = [];
+
+    if (!$result) {
+        return ['success' => false, 'data' => [], 'error' => mysqli_error($connection)];
+    }
+
+    $rowCount = mysqli_num_rows($result);
+
+    if ($rowCount > 0) {
+        while($row = mysqli_fetch_array($result)) {
+            $data[] = $row;
+        }
+    }
+    
+    return [
+        'success' => true,
+        'data' => $data,
+        'count' => $rowCount,
+        'format' => $format,
+        'column_mappings' => $column_mappings
+    ];
+}
+
+
+function save($tableOrSql, $data = null, $fileField = null, $uploadDir = null, $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png']) {
+    global $connection;
+    
+    // Auto-determine upload directory based on table name if not provided
+    if ($fileField && $uploadDir === null) {
+        $tableName = '';
+        if ($data === null) {
+            // Extract table name from SQL query
+            preg_match('/INSERT INTO (\w+)/', $tableOrSql, $matches);
+            $tableName = $matches[1] ?? '';
+        } else {
+            // Table name is the first parameter
+            $tableName = $tableOrSql;
+        }
+        
+        // Automatic directory generation  table name mapping
+        $directoryName = $tableName;
+        
+        // Auto-generate upload directory path
+        $uploadDir = "../../uploads/{$directoryName}/";
+        
+        // Ensure the directory exists - create if it doesn't
+        if (!is_dir($uploadDir)) {
+            if (!mkdir($uploadDir, 0755, true)) {
+                error_log("Failed to create upload directory: $uploadDir");
+                return false;
+            }
+        }
+    }
+    
+    if ($data === null) {
+        // Old way: raw SQL query
+        $result = mysqli_query($connection, $tableOrSql);
+        
+        if ($result) {
+            $insertId = mysqli_insert_id($connection);
+            
+            // Handle file upload if specified
+            if ($fileField && $uploadDir && isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] == 0) {
+                // Validate file type first
+                $fileType = $_FILES[$fileField]['type'];
+                if (!in_array($fileType, $allowedTypes)) {
+                    error_log("Invalid file type uploaded: $fileType");
+                    return false;
+                }
+                
+                $extension = strtolower(pathinfo($_FILES[$fileField]['name'], PATHINFO_EXTENSION));
+                $newname = "$insertId.$extension";
+                
+                // Directory should already exist from earlier check, but double-check
+                if (!is_dir($uploadDir)) {
+                    if (!mkdir($uploadDir, 0755, true)) {
+                        error_log("Failed to create upload directory: $uploadDir");
+                        return false;
+                    }
+                }
+                
+                // Move uploaded file
+                if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname)) {
+                    // Update the record with image path if it's a table-based insert
+                    if (strpos($tableOrSql, 'INSERT INTO') !== false) {
+                        // Extract table name from INSERT query
+                        preg_match('/INSERT INTO (\w+)/', $tableOrSql, $matches);
+                        if ($matches[1]) {
+                            $tableName = $matches[1];
+                            
+                            // Auto-detect primary key column name
+                            $pkQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                       WHERE TABLE_SCHEMA = DATABASE() 
+                                       AND TABLE_NAME = '$tableName' 
+                                       AND COLUMN_KEY = 'PRI'";
+                            $pkResult = mysqli_query($connection, $pkQuery);
+                            $idColumn = 'id'; // fallback default
+                            if ($pkResult && $pkRow = mysqli_fetch_assoc($pkResult)) {
+                                $idColumn = $pkRow['COLUMN_NAME'];
+                            }
+                            
+                            // Auto-detect image column name (filename, image_path, image, etc.)
+                            $imageQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                          WHERE TABLE_SCHEMA = DATABASE() 
+                                          AND TABLE_NAME = '$tableName' 
+                                          AND (COLUMN_NAME LIKE '%image%' OR COLUMN_NAME LIKE '%filename%' OR COLUMN_NAME LIKE '%file%')
+                                          AND DATA_TYPE = 'varchar'";
+                            $imageResult = mysqli_query($connection, $imageQuery);
+                            $imageColumn = 'image_path'; // fallback default
+                            if ($imageResult && $imageRow = mysqli_fetch_assoc($imageResult)) {
+                                $imageColumn = $imageRow['COLUMN_NAME'];
+                            }
+                            
+                            mysqli_query($connection, "UPDATE $tableName SET $imageColumn = '$newname' WHERE $idColumn = $insertId");
+                        }
+                    }
+                } else {
+                    error_log("Failed to move uploaded file to: " . $uploadDir . $newname);
+                }
+            }
+            
+            return $insertId;
+        } else {
+            return false;
+        }
+    } else {
+        // New way: table name with data array
+        $table = $tableOrSql;
+        $columns = array_keys($data);
+        $values = array_values($data);
+        
+        $columnsList = implode(', ', $columns);
+        $placeholders = str_repeat('?,', count($values) - 1) . '?';
+        
+        $sql = "INSERT INTO {$table} ({$columnsList}) VALUES ({$placeholders})";
+        $stmt = mysqli_prepare($connection, $sql);
+        
+        if (!$stmt) {
+            return false;
+        }
+        
+        // Create types string for bind_param
+        $types = '';
+        foreach ($values as $value) {
+            if (is_int($value)) {
+                $types .= 'i';
+            } elseif (is_float($value)) {
+                $types .= 'd';
+            } else {
+                $types .= 's';
+            }
+        }
+        
+        mysqli_stmt_bind_param($stmt, $types, ...$values);
+        $result = mysqli_stmt_execute($stmt);
+        
+        if ($result) {
+            $insertId = mysqli_insert_id($connection);
+            
+            // Handle file upload if specified
+            if ($fileField && $uploadDir && isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] == 0) {
+                // Validate file type first
+                $fileType = $_FILES[$fileField]['type'];
+                if (in_array($fileType, $allowedTypes)) {
+                    $extension = strtolower(pathinfo($_FILES[$fileField]['name'], PATHINFO_EXTENSION));
+                    $newname = "$insertId.$extension";
+                    
+                    // Directory should already exist from earlier check, but double-check
+                    if (!is_dir($uploadDir)) {
+                        if (!mkdir($uploadDir, 0755, true)) {
+                            error_log("Failed to create upload directory: $uploadDir");
+                            mysqli_stmt_close($stmt);
+                            return false;
+                        }
+                    }
+                    
+                    // Move uploaded file
+                    if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $uploadDir . $newname)) {
+                        // Auto-detect primary key column name
+                        $pkQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                   WHERE TABLE_SCHEMA = DATABASE() 
+                                   AND TABLE_NAME = '$table' 
+                                   AND COLUMN_KEY = 'PRI'";
+                        $pkResult = mysqli_query($connection, $pkQuery);
+                        $idColumn = 'id'; // fallback default
+                        if ($pkResult && $pkRow = mysqli_fetch_assoc($pkResult)) {
+                            $idColumn = $pkRow['COLUMN_NAME'];
+                        }
+                        
+                        // Auto-detect image column name (filename, image_path, image, etc.)
+                        $imageQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                                      WHERE TABLE_SCHEMA = DATABASE() 
+                                      AND TABLE_NAME = '$table' 
+                                      AND (COLUMN_NAME LIKE '%image%' OR COLUMN_NAME LIKE '%filename%' OR COLUMN_NAME LIKE '%file%')
+                                      AND DATA_TYPE = 'varchar'";
+                        $imageResult = mysqli_query($connection, $imageQuery);
+                        $imageColumn = 'image_path'; // fallback default
+                        if ($imageResult && $imageRow = mysqli_fetch_assoc($imageResult)) {
+                            $imageColumn = $imageRow['COLUMN_NAME'];
+                        }
+                        
+                        $updateSql = "UPDATE {$table} SET {$imageColumn} = ? WHERE {$idColumn} = ?";
+                        $updateStmt = mysqli_prepare($connection, $updateSql);
+                        mysqli_stmt_bind_param($updateStmt, 'si', $newname, $insertId);
+                        mysqli_stmt_execute($updateStmt);
+                        mysqli_stmt_close($updateStmt);
+                    } else {
+                        error_log("Failed to move uploaded file to: " . $uploadDir . $newname);
+                    }
+                } else {
+                    error_log("Invalid file type for upload: $fileType");
+                }
+            }
+            
+            mysqli_stmt_close($stmt);
+            return $insertId;
+        } else {
+            mysqli_stmt_close($stmt);
+            return false;
+        }
+    }
+}
+
+// Generic update function
+// Can accept either raw SQL or table name with data array and conditions
+function update($tableOrSql, $data = null, $conditions = '') {
+    global $connection;
+    
+    if ($data === null) {
+        // Old way: raw SQL query
+        return mysqli_query($connection, $tableOrSql);
+    } else {
+        // New way: table name with data array
+        $table = $tableOrSql;
+        $setParts = [];
+        $values = [];
+        
+        foreach ($data as $column => $value) {
+            $setParts[] = "{$column} = ?";
+            $values[] = $value;
+        }
+        
+        $setClause = implode(', ', $setParts);
+        $sql = "UPDATE {$table} SET {$setClause}";
+        
+        if (!empty($conditions)) {
+            $sql .= " WHERE {$conditions}";
+        }
+        
+        $stmt = mysqli_prepare($connection, $sql);
+        
+        if (!$stmt) {
+            return false;
+        }
+        
+        // Create types string for bind_param
+        $types = '';
+        foreach ($values as $value) {
+            if (is_int($value)) {
+                $types .= 'i';
+            } elseif (is_float($value)) {
+                $types .= 'd';
+            } else {
+                $types .= 's';
+            }
+        }
+        
+        mysqli_stmt_bind_param($stmt, $types, ...$values);
+        $result = mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+        
+        return $result;
+    }
+}
+
+// Generic delete function - handles both database records and files
+function delete($tableOrPath, $idValueOrSubfolder = null, $idColumn = 'id') {
+    global $connection;
+    
+    // If second parameter is null or starts with special characters, treat as file deletion
+    if ($idValueOrSubfolder === null || strpos($tableOrPath, '/') !== false || strpos($tableOrPath, '\\') !== false) {
+        // File deletion mode
+        $filePath = $tableOrPath;
+        $subfolder = $idValueOrSubfolder ?? '';
+        
+        // Build full path if subfolder provided
+        if (!empty($subfolder) && !strpos($filePath, '/') && !strpos($filePath, '\\')) {
+            $filePath = "../../uploads/{$subfolder}/" . $filePath;
+        }
+        
+        // Validate file path for security
+        if (strpos(realpath($filePath ?: ''), realpath('../../uploads/')) !== 0) {
+            return false; // Path not within uploads directory
+        }
+        
+        if (file_exists($filePath)) {
+            return unlink($filePath);
+        }
+        
+        return false; // File doesn't exist
+    } else {
+        // Database deletion mode
+        $table = $tableOrPath;
+        $idValue = $idValueOrSubfolder;
+        
+        $sql = "DELETE FROM {$table} WHERE {$idColumn} = ?";
+        $stmt = mysqli_prepare($connection, $sql);
+        
+        if (!$stmt) {
+            return false;
+        }
+        
+        mysqli_stmt_bind_param($stmt, "i", $idValue);
+        $result = mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+        
+        return $result;
+    }
+}
+
+function closeConnection() {
+    global $connection;
+    mysqli_close($connection);
+}
+?>

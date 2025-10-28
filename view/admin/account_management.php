@@ -1,4 +1,8 @@
 <?php
+// Require authentication
+require_once '../../controllers/AuthController.php';
+AuthController::requireAuth();
+
 // Include the AccountManagementController
 require_once '../../controllers/AccountManagementController.php';
 
@@ -41,84 +45,6 @@ $columnMappings = []; // Not used for account_management special handling
     <!-- Custom CSS -->
     <link rel="stylesheet" href="../../assets/css/account_management.css">
     <link rel="stylesheet" href="../../assets/css/sidebar.css">
-    <style>
-        .stat-card {
-            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-            border: 1px solid #e9ecef;
-            border-radius: 12px;
-            padding: 1.5rem;
-            display: flex;
-            align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.12);
-        }
-        
-        .stat-icon {
-            font-size: 2.5rem;
-            margin-right: 1rem;
-            color: #6c757d;
-            min-width: 60px;
-        }
-        
-        .stat-details h4 {
-            margin: 0;
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: #212529;
-        }
-        
-        .stat-details p {
-            margin: 0;
-            font-size: 0.9rem;
-            color: #6c757d;
-            font-weight: 500;
-        }
-        
-        .table-container {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            overflow: hidden;
-        }
-        
-        .table thead th {
-            background-color: #f8f9fa;
-            border-bottom: 2px solid #dee2e6;
-            font-weight: 600;
-            color: #495057;
-            padding: 1rem 0.75rem;
-        }
-        
-        .table tbody tr:hover {
-            background-color: #f8f9fa;
-        }
-        
-        .btn-group-sm .btn {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.8rem;
-        }
-        
-        @media (max-width: 768px) {
-            .stat-card {
-                margin-bottom: 1rem;
-            }
-            
-            .stat-icon {
-                font-size: 2rem;
-                margin-right: 0.75rem;
-                min-width: 50px;
-            }
-            
-            .stat-details h4 {
-                font-size: 1.5rem;
-            }
-        }
-    </style>
 </head>
 <body>
     <!-- Mobile Toggle Button -->
